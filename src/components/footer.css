@@ -1,0 +1,39 @@
+.plugin-footer {
+  color: #fff;
+  width: 100%;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plugin-footer > * {
+  margin: 5px;
+}
+
+.chat-input {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #666;
+  background: rgba(255,255,255,0.02);
+  color: var(--uxp-host-text-color-secondary, white);
+}
+
+.clip-btn {
+  background: rgba(255,255,255,0.03);
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.send-btn { padding: 6px 10px; }
+
+.send-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  vertical-align: middle;
+}
+.send-btn {
+  margin-left: 6px;
+}

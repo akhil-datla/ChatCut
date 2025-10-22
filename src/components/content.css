@@ -1,0 +1,52 @@
+.plugin-content {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  color: var(--uxp-host-text-color-secondary, white);
+  margin: 8px 0;
+  border: 1px solid #808080;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 180px;
+  max-height: 70vh;
+  box-sizing: border-box;
+}
+
+.welcome-message {
+  color: var(--uxp-host-text-color-secondary, #ddd);
+  padding: 6px;
+}
+
+
+.bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  display: inline-block;
+  flex: 0 0 auto; /* prevent shrinking */
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 6px;
+  font-size: var(--chat-font-size, 13px);
+  line-height: 1.4;
+}
+
+.bubble.bot {
+  background: var(--chat-bot-bg, rgba(255,255,255,0.06));
+  color: var(--chat-bot-text, #e6e6e6);
+  align-self: flex-start;
+  border-top-left-radius: 6px;
+}
+
+.bubble.user {
+  background: var(--chat-user-bg, rgba(0,120,255,0.18));
+  color: var(--chat-user-text, #d6f0ff);
+  align-self: flex-end;
+  border-top-right-radius: 6px;
+}
+
+.bubble-text { white-space: pre-wrap; }
+
+.bubble-text { white-space: pre-wrap; }
