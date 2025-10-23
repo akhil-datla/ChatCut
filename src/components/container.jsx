@@ -40,7 +40,7 @@ export const Container = () => {
     if (!text || !text.trim()) return;
     const userMsg = { id: `u-${Date.now()}`, sender: "user", text: text.trim() };
     addMessage(userMsg);
-    edit(text);
+    selectClips(text);
 
     // Simulate a bot reply (placeholder). Replace with real AI call later.
     setTimeout(() => {
@@ -52,17 +52,61 @@ export const Container = () => {
     }, 700);
   };
 
-  async function edit(text){
-    console.log("Editing with text:", text);
-    const ppro = require('premierepro');
-    const project = await ppro.Project.getActiveProject();
-    const seq = await project.getActiveSequence();
-    const videoTrack = await seq.getVideoTrack(0);
-    const videoTrack2 = await seq.getVideoTrack(1);
-    const videoTrackItems = await videoTrack.getTrackItems(1,false)[0];
-    console.log(videoTrackItems);
-    
+  async function selectClips(text) {
+    try {
+      const ppro = require("premierepro");
+      
+      // Get active project
+      const project = await ppro.Project.getActiveProject();
+      const sequence = await project.getActiveSequence();
+      const selection = await sequence.getSelection();
+      const trackItems = await selection.getTrackItems();
+      console.log("Select Clips with prompt:", { trackItems, text });
+      // Send prompt and trackitems to backend
+      // Axios or fetch logic would go here
+      editClips(ppro,project,trackItems, text);
 
+
+
+    } catch (err) {
+      console.error("Edit function error:", err);
+      addMessage({ 
+        id: `err-${Date.now()}`, 
+        sender: "bot", 
+        text: `Error: ${err.message || err}` 
+      });
+    }
+  }
+
+  async function editClips(ppro, project, trackItems, text) {
+      for (const item of trackItems) {
+        const matchNameList = await ppro.TransitionFactory.getVideoTransitionMatchNames();
+        console.log("Available Transitions:", matchNameList);
+        const userText = text.toLowerCase().trim();
+        const matchedTransitionName = matchNameList.find(name => 
+          name.toLowerCase() === userText
+        );
+        const videoTransition = await ppro.TransitionFactory.createVideoTransition(matchedTransitionName);
+        const addTransitionOptions = new ppro.AddTransitionOptions();
+        addTransitionOptions.setApplyToStart(true);
+        const time = await ppro.TickTime.createWithSeconds(10);
+        addTransitionOptions.setDuration(time);
+        addTransitionOptions.setForceSingleSided(false);
+        addTransitionOptions.setTransitionAlignment(.5);
+        const transitionAction = await item.createAddVideoTransitionAction(videoTransition, addTransitionOptions);
+        executeAction(project, transitionAction);
+      }
+  }
+  function executeAction(project, action) {
+    try {
+      project.lockedAccess(() => {
+        project.executeTransaction((compoundAction) => {    
+          compoundAction.addAction(action);
+        });
+      });
+    } catch (err) {
+      console.log(`Error: ${err}`);
+    }
   }
 
   return (
