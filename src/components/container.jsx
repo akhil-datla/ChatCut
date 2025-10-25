@@ -2,12 +2,9 @@ import React, { useState, useRef } from "react";
 import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
+import { applyZoom, applyTransition, applyFilter, applyRandomFilter, applyKeyframeDemo, applyTransitionDemo, applyFilterDemo, applyComprehensiveDemo } from "../services/editingActions";
 
-const BOT_REPLIES = [
-  "Not Implemented",
-
-
-];
+const ppro = require("premierepro");
 
 export const Container = () => {
   // messages are objects: { id: string, sender: 'user'|'bot', text: string }
@@ -41,20 +38,10 @@ export const Container = () => {
     const userMsg = { id: `u-${Date.now()}`, sender: "user", text: text.trim() };
     addMessage(userMsg);
     selectClips(text);
-
-    // Simulate a bot reply (placeholder). Replace with real AI call later.
-    setTimeout(() => {
-      if (BOT_REPLIES.length === 0) return;
-      const replyText = BOT_REPLIES[replyIndexRef.current];
-      replyIndexRef.current = (replyIndexRef.current + 1) % BOT_REPLIES.length;
-      const botReply = { id: `b-${Date.now()}`, sender: "bot", text: replyText };
-      addMessage(botReply);
-    }, 700);
   };
 
   async function selectClips(text) {
     try {
-      const ppro = require("premierepro");
       
       // Get active project
       const project = await ppro.Project.getActiveProject();
@@ -64,6 +51,7 @@ export const Container = () => {
       console.log("Select Clips with prompt:", { trackItems, text });
       // Send prompt and trackitems to backend
       // Axios or fetch logic would go here
+
       editClips(ppro,project,trackItems, text);
 
 
@@ -79,33 +67,15 @@ export const Container = () => {
   }
 
   async function editClips(ppro, project, trackItems, text) {
-      for (const item of trackItems) {
-        const matchNameList = await ppro.TransitionFactory.getVideoTransitionMatchNames();
-        console.log("Available Transitions:", matchNameList);
-        const userText = text.toLowerCase().trim();
-        const matchedTransitionName = matchNameList.find(name => 
-          name.toLowerCase() === userText
-        );
-        const videoTransition = await ppro.TransitionFactory.createVideoTransition(matchedTransitionName);
-        const addTransitionOptions = new ppro.AddTransitionOptions();
-        addTransitionOptions.setApplyToStart(true);
-        const time = await ppro.TickTime.createWithSeconds(10);
-        addTransitionOptions.setDuration(time);
-        addTransitionOptions.setForceSingleSided(false);
-        addTransitionOptions.setTransitionAlignment(.5);
-        const transitionAction = await item.createAddVideoTransitionAction(videoTransition, addTransitionOptions);
-        executeAction(project, transitionAction);
-      }
-  }
-  function executeAction(project, action) {
     try {
-      project.lockedAccess(() => {
-        project.executeTransaction((compoundAction) => {    
-          compoundAction.addAction(action);
-        });
-      });
+      writeToConsole("Applying edits...");
+      
+      // Demo: apply zoom + transition + filter
+      await applyComprehensiveDemo();
+      
+      writeToConsole("✅ Edits complete!");
     } catch (err) {
-      console.log(`Error: ${err}`);
+      writeToConsole(`❌ Error: ${err.message}`);
     }
   }
 
