@@ -1,0 +1,80 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Python caches and artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+*.egg-info/
+build/
+dist/
+
+# Python virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+_other-bundlers
+_dummy
+vite.config.ts.timestamp*
+
+ccx
+zip
+
+src/hybrid/win/.vs
+
+.env
+scripts/mac-sign.sh
+
+# MCP / local agent config
+.mcp.json
+
+# Archives and packages
+*.zip
+*.tar
+*.gz
+*.bz2
+*.zst
+*.7z
+*.zxp
+
+# Coverage and reports
+coverage/
+coverage.*
+*.cover
+*.lcov
+*.lcov.info
+
+# Documentation files
+*.pdf
+
+# Specific documentation to ignore
+MVP_STATUS.md
+QUICK_START.md
+SETUP.md
+plan.md

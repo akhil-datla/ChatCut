@@ -1,0 +1,4 @@
+.plugin-header {
+  color: var(--uxp-host-text-color-secondary, white);
+  width: 100%;
+}

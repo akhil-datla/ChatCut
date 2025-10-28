@@ -1,0 +1,270 @@
+/* ChatCut MVP Styles */
+
+.chatcut-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #e0e0e0;
+  background: #1e1e1e;
+}
+
+.app-header {
+  padding: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-bottom: 2px solid #764ba2;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.app-header .tagline {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.warning-banner {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #ff6b6b;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.app-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.app-footer {
+  padding: 8px 16px;
+  background: #2a2a2a;
+  border-top: 1px solid #3a3a3a;
+  font-size: 11px;
+  text-align: center;
+  color: #888;
+}
+
+/* Timeline Selector */
+.timeline-selector {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+}
+
+.timeline-selector h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #667eea;
+}
+
+.sequence-info {
+  margin: 12px 0;
+  padding: 12px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.sequence-info p {
+  margin: 4px 0;
+}
+
+.selection-info {
+  margin-top: 12px;
+  padding: 12px;
+  background: #1e1e1e;
+  border-radius: 4px;
+}
+
+.selection-info .hint {
+  color: #4ade80;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.selection-info .warning {
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+/* Prompt Input */
+.prompt-input {
+  padding: 16px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+}
+
+.prompt-input h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #667eea;
+}
+
+.prompt-input form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-input textarea {
+  padding: 12px;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.prompt-input textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.prompt-input textarea::placeholder {
+  color: #666;
+}
+
+/* Buttons */
+.btn-primary, .btn-success {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.btn-success {
+  background: #4ade80;
+  color: #1e1e1e;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #22c55e;
+}
+
+.btn-primary:disabled, .btn-success:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Result Container */
+.result-container {
+  margin-top: 16px;
+}
+
+.result-card {
+  padding: 16px;
+  background: #1e1e1e;
+  border-radius: 6px;
+  border: 2px solid #4ade80;
+}
+
+.result-card.low-confidence {
+  border-color: #fbbf24;
+}
+
+.result-card h4 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  color: #4ade80;
+}
+
+.result-card.low-confidence h4 {
+  color: #fbbf24;
+}
+
+.result-field {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.result-field strong {
+  color: #888;
+  display: inline-block;
+  min-width: 100px;
+}
+
+.result-field ul {
+  margin: 4px 0 0 0;
+  padding-left: 120px;
+  list-style: none;
+}
+
+.result-field ul li {
+  margin: 2px 0;
+  color: #e0e0e0;
+}
+
+.result-field.description {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #3a3a3a;
+}
+
+.result-field.description p {
+  margin: 4px 0 0 0;
+  color: #e0e0e0;
+  line-height: 1.5;
+}
+
+.result-card button {
+  margin-top: 16px;
+  width: 100%;
+}
+
+/* Examples */
+.examples {
+  margin-top: 16px;
+  padding: 12px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+.examples p {
+  margin: 0 0 8px 0;
+}
+
+.examples ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.examples li {
+  margin: 4px 0;
+  color: #aaa;
+}
+
+/* Error Message */
+.error-message {
+  margin-top: 12px;
+  padding: 12px;
+  background: #ff6b6b;
+  border-radius: 4px;
+  color: white;
+  font-size: 13px;
+}
