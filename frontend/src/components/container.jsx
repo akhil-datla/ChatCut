@@ -77,6 +77,7 @@ export const Container = () => {
       writeToConsole("✅ Edits complete!");
     } catch (err) {
       writeToConsole(`❌ Error: ${err.message}`);
+      console.error("Edit function error:", err);
     }
   }
 

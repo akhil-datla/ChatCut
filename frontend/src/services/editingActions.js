@@ -1,47 +1,15 @@
 const ppro = require("premierepro");
+import { 
+  getClipDuration, 
+  getClipInPoint, 
+  getMotionScaleParam,
+  validateClip,
+  logClipInfo 
+} from './clipUtils.js';
 
 // ============ UTILITY ============
 function log(msg, color = "white") {
   console.log(`[Edit][${color}] ${msg}`);
-}
-
-async function getComponentParam() {
-  const project = await ppro.Project.getActiveProject();
-  if (!project) {
-    log("No active project", "red");
-    return null;
-  }
-
-  const sequence = await project.getActiveSequence();
-  if (!sequence) {
-    log("No sequence found", "red");
-    return null;
-  }
-
-  const videoTrack = await sequence.getVideoTrack(0);
-  if (!videoTrack) {
-    log("No video track found", "red");
-    return null;
-  }
-
-  const trackItems = await videoTrack.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
-  if (!trackItems || trackItems.length === 0) {
-    log("No track items found", "red");
-    return null;
-  }
-
-  const componentChain = await trackItems[0].getComponentChain();
-  try {
-    let componentParam;
-    await project.lockedAccess(async () => {
-      const component = componentChain.getComponentAtIndex(1);
-      componentParam = await component.getParam(1);
-    });
-    return { componentParam, project };
-  } catch (err) {
-    log(`Error: ${err}`, "red");
-    return null;
-  }
 }
 
 async function executeAction(project, action) {
@@ -60,18 +28,25 @@ async function executeAction(project, action) {
   });
 }
 
-// ============ ZOOM/MOTION ============
-export async function applyZoom(seconds, zoomValue, smooth = true, interpolationMode = null) {
-  const context = await getComponentParam();
-  if (!context) return false;
+// ============ KEYFRAME HELPERS ============
 
-  const { componentParam, project } = context;
-
+/**
+ * Create a keyframe at a specific time with interpolation
+ * @param {ComponentParam} param - The parameter to add keyframe to
+ * @param {Project} project - Premiere Pro project
+ * @param {number} seconds - Time in seconds
+ * @param {number} value - Keyframe value
+ * @param {string} interpolation - 'LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT'
+ * @returns {Promise<boolean>}
+ */
+async function addKeyframe(param, project, seconds, value, interpolation = 'BEZIER') {
   try {
     let success = false;
-    project.lockedAccess(() => {
+
+    // Enable time-varying if not already enabled
+    await project.lockedAccess(() => {
       success = project.executeTransaction((compound) => {
-        const action = componentParam.createSetTimeVaryingAction(true);
+        const action = param.createSetTimeVaryingAction(true);
         compound.addAction(action);
       });
     });
@@ -81,17 +56,22 @@ export async function applyZoom(seconds, zoomValue, smooth = true, interpolation
       return false;
     }
 
-    project.lockedAccess(() => {
+    // Add the keyframe
+    await project.lockedAccess(() => {
       success = project.executeTransaction((compound) => {
-        const keyframe = componentParam.createKeyframe(zoomValue);
+        const keyframe = param.createKeyframe(value);
         keyframe.position = ppro.TickTime.createWithSeconds(seconds);
-        const action = componentParam.createAddKeyframeAction(keyframe);
+        const action = param.createAddKeyframeAction(keyframe);
         compound.addAction(action);
       });
     });
 
-    if (!success) return false;
+    if (!success) {
+      log(`Failed to add keyframe at ${seconds}s`, "red");
+      return false;
+    }
 
+    // Set interpolation mode
     const modeMap = {
       'LINEAR': ppro.Constants.InterpolationMode.LINEAR,
       'BEZIER': ppro.Constants.InterpolationMode.BEZIER,
@@ -99,11 +79,11 @@ export async function applyZoom(seconds, zoomValue, smooth = true, interpolation
       'EASE_IN': ppro.Constants.InterpolationMode.EASE_IN,
       'EASE_OUT': ppro.Constants.InterpolationMode.EASE_OUT,
     };
-    const interpMode = interpolationMode ? modeMap[interpolationMode] : (smooth ? ppro.Constants.InterpolationMode.BEZIER : ppro.Constants.InterpolationMode.HOLD);
+    const interpMode = modeMap[interpolation] || ppro.Constants.InterpolationMode.BEZIER;
 
-    project.lockedAccess(() => {
+    await project.lockedAccess(() => {
       success = project.executeTransaction((compound) => {
-        const action = componentParam.createSetInterpolationAtKeyframeAction(
+        const action = param.createSetInterpolationAtKeyframeAction(
           ppro.TickTime.createWithSeconds(seconds),
           interpMode
         );
@@ -111,12 +91,178 @@ export async function applyZoom(seconds, zoomValue, smooth = true, interpolation
       });
     });
 
-    log(`Zoom applied at ${seconds}s: value=${zoomValue}`, "green");
+    log(`✓ Keyframe added at ${seconds.toFixed(2)}s: value=${value}`, "green");
     return success;
   } catch (err) {
-    log(`Error applying zoom: ${err}`, "red");
+    log(`Error adding keyframe: ${err}`, "red");
     return false;
   }
+}
+
+// ============ ZOOM FUNCTIONS ============
+
+/**
+ * Zoom in on a clip - creates animation from start scale to end scale
+ * @param {TrackItem} trackItem - The clip to zoom
+ * @param {Object} options - Zoom options
+ * @param {number} options.startScale - Starting scale percentage (default: 100)
+ * @param {number} options.endScale - Ending scale percentage (default: 150)
+ * @param {number} options.startTime - Start time in seconds relative to clip (default: 0)
+ * @param {number} options.duration - Duration of zoom in seconds (default: entire clip)
+ * @param {string} options.interpolation - 'LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT' (default: 'BEZIER')
+ * @returns {Promise<boolean>}
+ */
+export async function zoomIn(trackItem, options = {}) {
+  const {
+    startScale = 100,
+    endScale = 150,
+    startTime = 0,
+    duration = null,
+    interpolation = 'BEZIER'
+  } = options;
+
+  try {
+    // Validate clip
+    const validation = await validateClip(trackItem);
+    if (!validation.valid) {
+      log(`Cannot zoom: ${validation.reason}`, "red");
+      return false;
+    }
+
+    // Get project
+    const project = await ppro.Project.getActiveProject();
+    if (!project) {
+      log("No active project", "red");
+      return false;
+    }
+
+    // Get Motion Scale parameter
+    const context = await getMotionScaleParam(trackItem, project);
+    if (!context) {
+      log("Could not get Motion Scale parameter", "red");
+      return false;
+    }
+
+    const { componentParam } = context;
+
+    // Calculate timing
+    const clipDuration = await getClipDuration(trackItem);
+    const clipStartTime = await getClipInPoint(trackItem);
+    
+    const zoomDuration = duration || clipDuration;
+    const absoluteStartTime = clipStartTime + startTime;
+    const absoluteEndTime = absoluteStartTime + zoomDuration;
+
+    log(`Zooming in: ${startScale}% → ${endScale}% over ${zoomDuration.toFixed(2)}s`, "blue");
+    await logClipInfo(trackItem);
+
+    // Create start keyframe
+    const startSuccess = await addKeyframe(
+      componentParam, 
+      project, 
+      absoluteStartTime, 
+      startScale, 
+      interpolation
+    );
+
+    if (!startSuccess) {
+      log("Failed to create start keyframe", "red");
+      return false;
+    }
+
+    // Create end keyframe
+    const endSuccess = await addKeyframe(
+      componentParam, 
+      project, 
+      absoluteEndTime, 
+      endScale, 
+      interpolation
+    );
+
+    if (!endSuccess) {
+      log("Failed to create end keyframe", "red");
+      return false;
+    }
+
+    log(`✅ Zoom in applied successfully!`, "green");
+    return true;
+  } catch (err) {
+    log(`Error in zoomIn: ${err}`, "red");
+    return false;
+  }
+}
+
+/**
+ * Zoom out on a clip - creates animation from larger scale to smaller scale
+ * @param {TrackItem} trackItem - The clip to zoom
+ * @param {Object} options - Zoom options (same as zoomIn)
+ * @returns {Promise<boolean>}
+ */
+export async function zoomOut(trackItem, options = {}) {
+  const {
+    startScale = 150,
+    endScale = 100,
+    ...otherOptions
+  } = options;
+
+  log("Applying zoom out...", "blue");
+  return await zoomIn(trackItem, { startScale, endScale, ...otherOptions });
+}
+
+/**
+ * Apply zoom in to multiple clips
+ * @param {TrackItem[]} trackItems - Array of clips
+ * @param {Object} options - Zoom options
+ * @returns {Promise<{successful: number, failed: number}>}
+ */
+export async function zoomInBatch(trackItems, options = {}) {
+  log(`Applying zoom in to ${trackItems.length} clip(s)...`, "blue");
+  
+  let successful = 0;
+  let failed = 0;
+
+  for (let i = 0; i < trackItems.length; i++) {
+    const clip = trackItems[i];
+    log(`Processing clip ${i + 1}/${trackItems.length}...`, "blue");
+    
+    const result = await zoomIn(clip, options);
+    if (result) {
+      successful++;
+    } else {
+      failed++;
+    }
+  }
+
+  log(`✅ Batch complete: ${successful} successful, ${failed} failed`, "green");
+  return { successful, failed };
+}
+
+/**
+ * Apply zoom out to multiple clips
+ * @param {TrackItem[]} trackItems - Array of clips
+ * @param {Object} options - Zoom options
+ * @returns {Promise<{successful: number, failed: number}>}
+ */
+export async function zoomOutBatch(trackItems, options = {}) {
+  log(`Applying zoom out to ${trackItems.length} clip(s)...`, "blue");
+  
+  let successful = 0;
+  let failed = 0;
+
+  for (let i = 0; i < trackItems.length; i++) {
+    const clip = trackItems[i];
+    log(`Processing clip ${i + 1}/${trackItems.length}...`, "blue");
+    
+    const result = await zoomOut(clip, options);
+    if (result) {
+      successful++;
+    } else {
+      failed++;
+    }
+  }
+
+  log(`✅ Batch complete: ${successful} successful, ${failed} failed`, "green");
+  return { successful, failed };
 }
 
 // ============ TRANSITIONS ============
@@ -190,24 +336,14 @@ export async function applyFilter(item, filterName) {
   }
 }
 
+// ============ DEMO/TEST FUNCTIONS ============
 
-
-// ============ DEMO ============
-export async function applyKeyframeDemo() {
-  log("Starting keyframe demo...", "blue");
+/**
+ * Simple test - zoom in on first selected clip
+ */
+export async function testZoom() {
+  log("🧪 Testing zoom functionality...", "blue");
   
-  // Apply zoom keyframes at 1s, 6s, and 12s with HOLD interpolation
-  await applyZoom(1, 50, false, "HOLD");      // 0.5x zoom at 1s, instant
-  await applyZoom(6, 100, false, "HOLD");     // 1.0x zoom at 6s, instant
-  await applyZoom(12, 200, false, "HOLD");    // 2.0x zoom at 12s, instant
-  
-  log("✅ Keyframe demo complete!", "green");
-}
-
-export async function applyTransitionDemo() {
-  log("Starting transition demo...", "blue");
-  
-  // Get all selected clips
   const project = await ppro.Project.getActiveProject();
   if (!project) {
     log("No active project", "red");
@@ -228,99 +364,18 @@ export async function applyTransitionDemo() {
 
   const trackItems = await selection.getTrackItems();
   if (!trackItems || trackItems.length === 0) {
-    log("No track items selected", "red");
+    log("❌ No clips selected. Please select a clip on the timeline.", "red");
     return;
   }
 
   log(`Found ${trackItems.length} selected clip(s)`, "blue");
 
-  try {
-    // Log available transitions
-    const availableTransitions = await ppro.TransitionFactory.getVideoTransitionMatchNames();
-    log(`Available transitions: ${availableTransitions.join(", ")}`, "blue");
+  // Test zoom in on all selected clips
+  const result = await zoomInBatch(trackItems, {
+    startScale: 100,
+    endScale: 150,
+    interpolation: 'BEZIER'
+  });
 
-    // Apply transition to each selected clip
-    for (let i = 0; i < trackItems.length; i++) {
-      const clip = trackItems[i];
-      log(`Applying transition to clip ${i + 1}/${trackItems.length}...`, "blue");
-
-      const transitionSuccess = await applyTransition(clip, "AE.AE_Impact_Lens_Blur", 1.0, true);
-      if (transitionSuccess) {
-        log(`✅ Transition applied to clip ${i + 1}`, "green");
-      } else {
-        log(`⚠️  Transition skipped for clip ${i + 1}`, "yellow");
-      }
-    }
-
-    log("🎉 Transition demo complete!", "green");
-  } catch (err) {
-    log(`Error during transition demo: ${err}`, "red");
-  }
-}
-
-export async function applyFilterDemo() {
-  log("Starting filter demo...", "blue");
-  
-  // Get all selected clips
-  const project = await ppro.Project.getActiveProject();
-  if (!project) {
-    log("No active project", "red");
-    return;
-  }
-
-  const sequence = await project.getActiveSequence();
-  if (!sequence) {
-    log("No sequence found", "red");
-    return;
-  }
-
-  const selection = await sequence.getSelection();
-  if (!selection) {
-    log("No selection found", "red");
-    return;
-  }
-
-  const trackItems = await selection.getTrackItems();
-  if (!trackItems || trackItems.length === 0) {
-    log("No track items selected", "red");
-    return;
-  }
-
-  log(`Found ${trackItems.length} selected clip(s)`, "blue");
-
-  try {
-    // Log available filters
-    const availableFilters = await ppro.VideoFilterFactory.getMatchNames();
-    log(`Available filters (${availableFilters.length} total): ${availableFilters.slice(0, 10).join(", ")}${availableFilters.length > 10 ? "..." : ""}`, "blue");
-
-    // Apply filter to each selected clip
-    for (let i = 0; i < trackItems.length; i++) {
-      const clip = trackItems[i];
-      log(`Applying filter to clip ${i + 1}/${trackItems.length}...`, "blue");
-
-      const filterSuccess = await applyFilter(clip, "PR.ADBE Lens Distortion");
-      if (filterSuccess) {
-        log(`✅ Filter applied to clip ${i + 1}`, "green");
-      } else {
-        log(`⚠️  Filter skipped for clip ${i + 1}`, "yellow");
-      }
-    }
-
-    log("🎉 Filter demo complete!", "green");
-  } catch (err) {
-    log(`Error during filter demo: ${err}`, "red");
-  }
-}
-
-export async function applyComprehensiveDemo() {
-  log("Starting comprehensive demo (zoom + transition + filter)...", "blue");
-  
-  try {
-    await applyKeyframeDemo();
-    await applyTransitionDemo();
-    await applyFilterDemo();
-    log("🎉 All comprehensive tests completed on all selected clips!", "green");
-  } catch (err) {
-    log(`Error during comprehensive demo: ${err}`, "red");
-  }
+  log(`🎉 Test complete! ${result.successful} clips zoomed successfully.`, "green");
 }
