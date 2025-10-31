@@ -2,8 +2,8 @@ import React, { useState, useRef } from "react";
 import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
-import { applyZoom, applyTransition, applyFilter, applyRandomFilter, applyKeyframeDemo, applyTransitionDemo, applyFilterDemo, applyComprehensiveDemo } from "../services/editingActions";
-import { sendPing } from "../services/backendClient";
+import { dispatchAction } from "../services/actionDispatcher";
+import { processPrompt } from "../services/backendClient";
 
 const ppro = require("premierepro");
 
@@ -48,12 +48,54 @@ export const Container = () => {
       const project = await ppro.Project.getActiveProject();
       const sequence = await project.getActiveSequence();
       const selection = await sequence.getSelection();
-      const trackItems = await selection.getTrackItems();
-      console.log("Select Clips with prompt:", { trackItems, text });
+      
+      // Get only video track items (Motion effect only works on video clips)
+      const trackItems = await selection.getTrackItems(
+        ppro.Constants.TrackItemType.CLIP, 
+        false  // false means only video clips
+      );
+      
+      // Filter to video clips only if needed
+      const videoTrackItems = [];
+      for (let i = 0; i < trackItems.length; i++) {
+        try {
+          const clip = trackItems[i];
+          const componentChain = await clip.getComponentChain();
+          const componentCount = await componentChain.getComponentCount();
+          
+          // Check if clip has video components (Motion, Transform, etc.)
+          let hasVideo = false;
+          for (let j = 0; j < componentCount; j++) {
+            try {
+              const component = await componentChain.getComponentAtIndex(j);
+              const matchName = await component.getMatchName();
+              if (matchName.includes("Motion") || matchName.includes("ADBE") || matchName.includes("Video")) {
+                hasVideo = true;
+                break;
+              }
+            } catch (err) {
+              // Continue checking
+            }
+          }
+          
+          if (hasVideo) {
+            videoTrackItems.push(clip);
+          }
+        } catch (err) {
+          // Skip this clip
+        }
+      }
+      
+      if (videoTrackItems.length === 0) {
+        writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
+        return;
+      }
+      
+      console.log("Select Clips with prompt:", { trackItems: videoTrackItems, text });
       // Send prompt and trackitems to backend
       // Axios or fetch logic would go here
 
-      editClips(ppro,project,trackItems, text);
+      editClips(ppro, project, videoTrackItems, text);
 
 
 
@@ -69,15 +111,65 @@ export const Container = () => {
 
   async function editClips(ppro, project, trackItems, text) {
     try {
-      const backendResponse = await sendPing(text);
-      writeToConsole(`Received Status: ${backendResponse.status}  Message: ${backendResponse.received}`);
-      writeToConsole("Applying edits...");
-      await applyComprehensiveDemo();
+      // Check if we have selected clips
+      if (!trackItems || trackItems.length === 0) {
+        writeToConsole("❌ No clips selected. Please select at least one clip on the timeline.");
+        console.error("[Edit] No trackItems provided");
+        return;
+      }
       
-      writeToConsole("✅ Edits complete!");
+      writeToConsole(`Found ${trackItems.length} selected clip(s)`);
+      writeToConsole(`🤖 Sending to AI: "${text}"`);
+      
+      // Send prompt to AI backend for processing
+      const aiResponse = await processPrompt(text);
+      
+      // Log AI response for debugging
+      console.log("[Edit] AI Response:", aiResponse);
+      
+      // Show AI confirmation
+      if (aiResponse.action) {
+        writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
+        if (aiResponse.message) {
+          writeToConsole(`💬 AI message: ${aiResponse.message}`);
+        }
+      } else {
+        writeToConsole(`❌ AI couldn't understand: ${aiResponse.message || "Try: 'zoom in by 120%', 'zoom out', etc."}`);
+        if (aiResponse.error) {
+          writeToConsole(`⚠️ Error: ${aiResponse.error}`);
+        }
+        return;
+      }
+      
+      // Dispatch the action with extracted parameters
+      const result = await dispatchAction(
+        aiResponse.action,
+        trackItems,
+        aiResponse.parameters || {}
+      );
+      
+      // Report results
+      if (result.successful > 0) {
+        writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
+        if (result.failed > 0) {
+          writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
+        }
+      } else {
+        writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
+      }
+      
     } catch (err) {
-      writeToConsole(`❌ Error: ${err.message}`);
-      console.error("Edit function error:", err);
+      const errorMessage = err.message || err;
+      writeToConsole(`❌ Error: ${errorMessage}`);
+      
+      // Provide helpful guidance for common errors
+      if (errorMessage.includes("Backend server is not running")) {
+        writeToConsole(`💡 Hint: Start the backend server by running: cd ChatCut/backend && source venv/bin/activate && python main.py`);
+      } else if (errorMessage.includes("503") || errorMessage.includes("Network request failed")) {
+        writeToConsole(`💡 Hint: Make sure the backend server is running on port 3001`);
+      }
+      
+      console.error("[Edit] Edit function error:", err);
     }
   }
 

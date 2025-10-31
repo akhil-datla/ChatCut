@@ -5,7 +5,7 @@ import {
   getMotionScaleParam,
   validateClip,
   logClipInfo 
-} from './clipUtils.js';
+} from '../../../src/services/clipUtils.js';
 
 // ============ UTILITY ============
 function log(msg, color = "white") {
@@ -41,35 +41,27 @@ async function executeAction(project, action) {
  */
 async function addKeyframe(param, project, seconds, value, interpolation = 'BEZIER') {
   try {
-    let success = false;
+    log(`Creating keyframe at ${seconds.toFixed(2)}s with value ${value}`, "blue");
 
     // Enable time-varying if not already enabled
-    await project.lockedAccess(() => {
-      success = project.executeTransaction((compound) => {
+    await project.lockedAccess(async () => {
+      project.executeTransaction((compound) => {
         const action = param.createSetTimeVaryingAction(true);
         compound.addAction(action);
       });
     });
-
-    if (!success) {
-      log("Failed to enable time-varying", "red");
-      return false;
-    }
+    log(`✓ Time-varying enabled`, "green");
 
     // Add the keyframe
-    await project.lockedAccess(() => {
-      success = project.executeTransaction((compound) => {
+    await project.lockedAccess(async () => {
+      project.executeTransaction((compound) => {
         const keyframe = param.createKeyframe(value);
         keyframe.position = ppro.TickTime.createWithSeconds(seconds);
         const action = param.createAddKeyframeAction(keyframe);
         compound.addAction(action);
       });
     });
-
-    if (!success) {
-      log(`Failed to add keyframe at ${seconds}s`, "red");
-      return false;
-    }
+    log(`✓ Keyframe added at ${seconds.toFixed(2)}s`, "green");
 
     // Set interpolation mode
     const modeMap = {
@@ -81,8 +73,8 @@ async function addKeyframe(param, project, seconds, value, interpolation = 'BEZI
     };
     const interpMode = modeMap[interpolation] || ppro.Constants.InterpolationMode.BEZIER;
 
-    await project.lockedAccess(() => {
-      success = project.executeTransaction((compound) => {
+    await project.lockedAccess(async () => {
+      project.executeTransaction((compound) => {
         const action = param.createSetInterpolationAtKeyframeAction(
           ppro.TickTime.createWithSeconds(seconds),
           interpMode
@@ -90,11 +82,13 @@ async function addKeyframe(param, project, seconds, value, interpolation = 'BEZI
         compound.addAction(action);
       });
     });
+    log(`✓ Interpolation set to ${interpolation}`, "green");
 
-    log(`✓ Keyframe added at ${seconds.toFixed(2)}s: value=${value}`, "green");
-    return success;
+    log(`✅ Keyframe successfully created at ${seconds.toFixed(2)}s: value=${value}`, "green");
+    return true;
   } catch (err) {
-    log(`Error adding keyframe: ${err}`, "red");
+    log(`❌ Error adding keyframe: ${err.message || err}`, "red");
+    console.error("Keyframe creation error details:", err);
     return false;
   }
 }
@@ -102,7 +96,7 @@ async function addKeyframe(param, project, seconds, value, interpolation = 'BEZI
 // ============ ZOOM FUNCTIONS ============
 
 /**
- * Zoom in on a clip - creates animation from start scale to end scale
+ * Zoom in on a clip - creates animation from start scale to end scale (or static zoom)
  * @param {TrackItem} trackItem - The clip to zoom
  * @param {Object} options - Zoom options
  * @param {number} options.startScale - Starting scale percentage (default: 100)
@@ -110,6 +104,7 @@ async function addKeyframe(param, project, seconds, value, interpolation = 'BEZI
  * @param {number} options.startTime - Start time in seconds relative to clip (default: 0)
  * @param {number} options.duration - Duration of zoom in seconds (default: entire clip)
  * @param {string} options.interpolation - 'LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT' (default: 'BEZIER')
+ * @param {boolean} options.animated - If true, creates gradual zoom (100%→150%). If false, creates static zoom (150%→150%) (default: true)
  * @returns {Promise<boolean>}
  */
 export async function zoomIn(trackItem, options = {}) {
@@ -118,30 +113,41 @@ export async function zoomIn(trackItem, options = {}) {
     endScale = 150,
     startTime = 0,
     duration = null,
-    interpolation = 'BEZIER'
+    interpolation = 'BEZIER',
+    animated = false  // Default to static zoom (unless user explicitly asks for gradual)
   } = options;
+  
+  // For static zoom, use the endScale for both start and end
+  const actualStartScale = animated ? startScale : endScale;
+  const actualEndScale = endScale;
 
   try {
+    log(`Starting zoomIn function...`, "blue");
+    
     // Validate clip
     const validation = await validateClip(trackItem);
     if (!validation.valid) {
-      log(`Cannot zoom: ${validation.reason}`, "red");
+      log(`❌ Cannot zoom: ${validation.reason}`, "red");
       return false;
     }
+    log(`✓ Clip validation passed`, "green");
 
     // Get project
     const project = await ppro.Project.getActiveProject();
     if (!project) {
-      log("No active project", "red");
+      log("❌ No active project", "red");
       return false;
     }
+    log(`✓ Project found`, "green");
 
     // Get Motion Scale parameter
+    log(`Looking for Motion Scale parameter...`, "blue");
     const context = await getMotionScaleParam(trackItem, project);
     if (!context) {
-      log("Could not get Motion Scale parameter", "red");
+      log("❌ Could not get Motion Scale parameter", "red");
       return false;
     }
+    log(`✓ Motion Scale parameter found`, "green");
 
     const { componentParam } = context;
 
@@ -149,45 +155,64 @@ export async function zoomIn(trackItem, options = {}) {
     const clipDuration = await getClipDuration(trackItem);
     const clipStartTime = await getClipInPoint(trackItem);
     
+    if (clipDuration === null || clipStartTime === null) {
+      log(`❌ Could not get clip timing information`, "red");
+      return false;
+    }
+    
     const zoomDuration = duration || clipDuration;
     const absoluteStartTime = clipStartTime + startTime;
     const absoluteEndTime = absoluteStartTime + zoomDuration;
 
-    log(`Zooming in: ${startScale}% → ${endScale}% over ${zoomDuration.toFixed(2)}s`, "blue");
+    // Log different messages for animated vs static zoom
+    if (animated) {
+      log(`Applying gradual zoom: ${actualStartScale}% → ${actualEndScale}% over ${zoomDuration.toFixed(2)}s`, "blue");
+    } else {
+      log(`Applying static zoom: ${actualEndScale}% throughout entire clip`, "blue");
+    }
+    log(`Clip starts at: ${clipStartTime.toFixed(2)}s, duration: ${clipDuration.toFixed(2)}s`, "blue");
+    log(`Keyframes at: ${absoluteStartTime.toFixed(2)}s and ${absoluteEndTime.toFixed(2)}s`, "blue");
     await logClipInfo(trackItem);
 
     // Create start keyframe
+    log(`Creating start keyframe at ${absoluteStartTime.toFixed(2)}s with value ${actualStartScale}`, "blue");
     const startSuccess = await addKeyframe(
       componentParam, 
       project, 
       absoluteStartTime, 
-      startScale, 
+      actualStartScale, 
       interpolation
     );
 
     if (!startSuccess) {
-      log("Failed to create start keyframe", "red");
+      log("❌ Failed to create start keyframe", "red");
       return false;
     }
 
     // Create end keyframe
+    log(`Creating end keyframe at ${absoluteEndTime.toFixed(2)}s with value ${actualEndScale}`, "blue");
     const endSuccess = await addKeyframe(
       componentParam, 
       project, 
       absoluteEndTime, 
-      endScale, 
+      actualEndScale, 
       interpolation
     );
 
     if (!endSuccess) {
-      log("Failed to create end keyframe", "red");
+      log("❌ Failed to create end keyframe", "red");
       return false;
     }
 
-    log(`✅ Zoom in applied successfully!`, "green");
+    if (animated) {
+      log(`✅ Gradual zoom applied successfully! Scale ${actualStartScale}% → ${actualEndScale}%`, "green");
+    } else {
+      log(`✅ Static zoom applied successfully! Scale ${actualEndScale}% throughout clip`, "green");
+    }
     return true;
   } catch (err) {
-    log(`Error in zoomIn: ${err}`, "red");
+    log(`❌ Error in zoomIn: ${err.message || err}`, "red");
+    console.error("zoomIn error details:", err);
     return false;
   }
 }
