@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 import uvicorn
+
+from models.schemas import ProcessPromptRequest, ProcessPromptResponse
+from services.ai_service import process_prompt
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(title="ChatCut Backend", version="0.1.0")
 
@@ -22,6 +29,37 @@ async def ping(request: dict):
     return {
         "status": "ok",
         "received": message
+    }
+
+
+@app.post("/api/process-prompt", response_model=ProcessPromptResponse)
+async def process_user_prompt(request: ProcessPromptRequest):
+    """
+    Process user prompt through AI and return structured action with parameters.
+    
+    Example:
+        Request: {"prompt": "zoom in by 120%"}
+        Response: {
+            "action": "zoomIn",
+            "parameters": {"endScale": 120, "animated": false},
+            "confidence": 1.0,
+            "message": "Zooming in to 120%"
+        }
+    """
+    print(f"[AI] Processing prompt: {request.prompt}")
+    result = process_prompt(request.prompt)
+    print(f"[AI] Result: {result}")
+    return ProcessPromptResponse(**result)
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint"""
+    from services.ai_service import get_provider_info
+    provider_info = get_provider_info()
+    return {
+        "status": "ok",
+        "ai_provider": provider_info
     }
 
 
