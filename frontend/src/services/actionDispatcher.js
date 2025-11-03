@@ -11,7 +11,8 @@ import {
   zoomInBatch, 
   zoomOutBatch,
   applyFilter,
-  applyTransition 
+  applyTransition, 
+  applyBlur
 } from './editingActions.js';
 
 /**
@@ -117,8 +118,29 @@ const actionRegistry = {
     }
     
     return { successful, failed };
+  },
+
+  applyBlur: async (trackItems, parameters = {}) => {
+    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const blurAmount = (parameters.blurAmount ?? parameters.blurriness ?? 5);
+    
+    let successful = 0;
+    let failed = 0;
+    
+    for (const item of items) {
+      try {
+  const result = await applyBlur(item, Number(blurAmount));
+        if (result) successful++;
+        else failed++;
+      } catch (err) {
+        console.error(`Error applying blur to clip:`, err);
+        failed++;
+      }
+    }
+    
+    return { successful, failed };
   }
-};
+}
 
 /**
  * Dispatch an action to the appropriate handler

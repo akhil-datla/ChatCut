@@ -134,9 +134,20 @@ export const Container = () => {
           writeToConsole(`💬 AI message: ${aiResponse.message}`);
         }
       } else {
-        writeToConsole(`❌ AI couldn't understand: ${aiResponse.message || "Try: 'zoom in by 120%', 'zoom out', etc."}`);
-        if (aiResponse.error) {
-          writeToConsole(`⚠️ Error: ${aiResponse.error}`);
+        // Handle special non-action responses
+        if (aiResponse.error === "SMALL_TALK") {
+          // Friendly chat reply without error styling
+          writeToConsole(aiResponse.message || "Hi! How can I help edit your video?");
+          return;
+        }
+        // Handle uncertainty messages from backend (no parameters expected)
+        if (aiResponse.error === "NEEDS_SELECTION" || aiResponse.error === "NEEDS_SPECIFICATION") {
+          writeToConsole(`🤔 ${aiResponse.message}`);
+        } else {
+          writeToConsole(`❌ AI couldn't understand: ${aiResponse.message || "Try: 'zoom in by 120%', 'zoom out', etc."}`);
+          if (aiResponse.error) {
+            writeToConsole(`⚠️ Error: ${aiResponse.error}`);
+          }
         }
         return;
       }

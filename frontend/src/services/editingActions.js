@@ -5,7 +5,7 @@ import {
   getMotionScaleParam,
   validateClip,
   logClipInfo 
-} from '../../../src/services/clipUtils.js';
+} from './clipUtils.js';
 
 // ============ UTILITY ============
 function log(msg, color = "white") {
@@ -290,10 +290,84 @@ export async function zoomOutBatch(trackItems, options = {}) {
   return { successful, failed };
 }
 
+// ============ BLUR ============
+/**
+ * Apply blur effect to a single track item
+ * @param {TrackItem} trackItem - The clip to apply blur to
+ * @param {number} blurriness - Blur amount (default: 50)
+ * @returns {Promise<boolean>}
+ */
+export async function applyBlur(trackItem, blurriness = 50) {
+  try {
+    const project = await ppro.Project.getActiveProject();
+    if (!project) {
+      log("No active project", "red");
+      return false;
+    }
+
+    if (!trackItem) {
+      log("No track item provided", "red");
+      return false;
+    }
+
+    const componentChain = await trackItem.getComponentChain();
+    if (!componentChain) {
+      log("No component chain", "red");
+      return false;
+    }
+
+    // Helper to find a param named "Blurriness" across all components
+    const findBlurrinessParam = async () => {
+      const compCount = componentChain.getComponentCount();
+      for (let ci = 0; ci < compCount; ci++) {
+        const comp = componentChain.getComponentAtIndex(ci);
+        const paramCount = comp.getParamCount();
+        for (let pi = 0; pi < paramCount; pi++) {
+          const param = await comp.getParam(pi);
+          const name = (param?.displayName || "").trim().toLowerCase();
+          if (name === "blurriness") {
+            return param;
+          }
+        }
+      }
+      return null;
+    };
+
+    // Try to find existing "Blurriness"
+    let blurParam = await findBlurrinessParam();
+
+    // If not found, append Gaussian Blur and try again
+    if (!blurParam) {
+      const blurComponent = await ppro.VideoFilterFactory.createComponent("AE.ADBE Gaussian Blur 2");
+      const appendAction = await componentChain.createAppendComponentAction(blurComponent);
+      await executeAction(project, appendAction);
+      blurParam = await findBlurrinessParam();
+    }
+
+    if (!blurParam) {
+      log("Could not find Blurriness parameter", "yellow");
+      return false;
+    }
+
+    // Set value via keyframe (required by createSetValueAction)
+    const keyframe = blurParam.createKeyframe(Number(blurriness));
+    const setAction = blurParam.createSetValueAction(keyframe, true);
+    await executeAction(project, setAction);
+
+    log(`✅ Blur effect (${blurriness}) applied`, "green");
+    return true;
+
+  } catch (err) {
+    log(`Error applying blur: ${err}`, "red");
+    return false;
+  }
+}
+
 // ============ TRANSITIONS ============
-export async function applyTransition(item, transitionName, durationSeconds = 1.0, applyToStart = true) {
+export async function applyTransition(item, transitionName, durationSeconds = 1.0, applyToStart = true, transitionAllignment = 0.5) {
   try {
     const matchNameList = await ppro.TransitionFactory.getVideoTransitionMatchNames();
+    console.log("Available transitions:", matchNameList);
     const matched = matchNameList.find(n => n.toLowerCase() === transitionName.toLowerCase());
 
     if (!matched) {
@@ -303,11 +377,12 @@ export async function applyTransition(item, transitionName, durationSeconds = 1.
 
     const videoTransition = await ppro.TransitionFactory.createVideoTransition(matched);
     const opts = new ppro.AddTransitionOptions();
+    console.log("AddTransitionOptions created:", opts);
     opts.setApplyToStart(applyToStart);
     const time = await ppro.TickTime.createWithSeconds(durationSeconds);
     opts.setDuration(time);
     opts.setForceSingleSided(false);
-    opts.setTransitionAlignment(0.5);
+    opts.setTransitionAlignment(transitionAllignment);
 
     const project = await ppro.Project.getActiveProject();
     const action = await item.createAddVideoTransitionAction(videoTransition, opts);
@@ -325,6 +400,7 @@ export async function applyTransition(item, transitionName, durationSeconds = 1.
 export async function applyRandomFilter(item) {
   try {
     const matchNames = await ppro.VideoFilterFactory.getMatchNames();
+    console.log("Available video filters:", matchNames);
     if (!matchNames || matchNames.length === 0) {
       log("No video filters available", "red");
       return false;
@@ -347,6 +423,12 @@ export async function applyRandomFilter(item) {
 
 export async function applyFilter(item, filterName) {
   try {
+    const matchNames = await ppro.VideoFilterFactory.getMatchNames();
+    console.log("Available video filters:", matchNames);
+    if (!matchNames.includes(filterName)) {
+      log(`Filter not found: ${filterName}`, "red");
+      return false;
+    }
     const component = await ppro.VideoFilterFactory.createComponent(filterName);
     const componentChain = await item.getComponentChain();
     const project = await ppro.Project.getActiveProject();

@@ -101,7 +101,14 @@ def get_available_actions() -> Dict[str, Dict[str, Any]]:
             "parameters": {
                 "transitionName": {"type": "string", "required": True, "description": "Name of the transition"},
                 "duration": {"type": "number", "default": 1.0, "description": "Duration in seconds"},
-                "applyToStart": {"type": "boolean", "default": True, "description": "Apply to start of clip"}
+                "applyToStart": {"type": "boolean", "default": True, "description": "Apply to start of clip"},
+                "transitionAlignment": {"type": "number", "default": 0.5, "description": "Alignment of the transition (0.0=start, 0.5=center, 1.0=end)"}
+            }
+        },
+        "applyBlur": {
+            "description": "Apply a Gaussian blur to the clip",
+            "parameters": {
+                "blurAmount": {"type": "number", "default": 50, "description": "Blurriness amount (e.g., 0-500)"}
             }
         }
     }
