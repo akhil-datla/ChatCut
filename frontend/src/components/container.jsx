@@ -3,7 +3,8 @@ import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
 import { dispatchAction } from "../services/actionDispatcher";
-import { processPrompt } from "../services/backendClient";
+import { processPrompt, processMedia } from "../services/backendClient";
+import { getSelectedMediaFilePaths } from "../services/clipUtils";
 
 const ppro = require("premierepro");
 
@@ -14,6 +15,9 @@ export const Container = () => {
   ]);
   // sequential reply index (loops when reaching the end)
   const replyIndexRef = useRef(0);
+  
+  // Toggle for process media mode (send file paths to AI)
+  const [processMediaMode, setProcessMediaMode] = useState(true);
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -121,8 +125,17 @@ export const Container = () => {
       writeToConsole(`Found ${trackItems.length} selected clip(s)`);
       writeToConsole(`🤖 Sending to AI: "${text}"`);
       
-      // Send prompt to AI backend for processing
-      const aiResponse = await processPrompt(text);
+      // Determine which backend call to use based on processMediaMode
+      let aiResponse;
+      if (processMediaMode) {
+        // Get file paths from selected clips
+        const filePaths = await getSelectedMediaFilePaths(project);
+        writeToConsole(`Sending ${filePaths.length} media file path(s) to Backend`);
+        aiResponse = await processMedia(filePaths, text);
+      } else {
+        // Standard prompt-only processing
+        aiResponse = await processPrompt(text);
+      }
       
       // Log AI response for debugging
       console.log("[Edit] AI Response:", aiResponse);
@@ -189,7 +202,13 @@ export const Container = () => {
       <div className="plugin-container">
         <Header />
         <Content message={message} />
-        <Footer writeToConsole={writeToConsole} clearConsole={clearConsole} onSend={onSend} />
+        <Footer 
+          writeToConsole={writeToConsole} 
+          clearConsole={clearConsole} 
+          onSend={onSend}
+          processMediaMode={processMediaMode}
+          setProcessMediaMode={setProcessMediaMode}
+        />
       </div>
       <style>
         {`

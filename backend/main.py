@@ -2,8 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import uvicorn
+import os
+from pathlib import Path
 
-from models.schemas import ProcessPromptRequest, ProcessPromptResponse
+from models.schemas import (
+    ProcessPromptRequest, 
+    ProcessPromptResponse,
+    ProcessMediaRequest,
+    ProcessMediaResponse
+)
 from services.ai_service import process_prompt
 
 # Load environment variables
@@ -50,6 +57,35 @@ async def process_user_prompt(request: ProcessPromptRequest):
     result = process_prompt(request.prompt)
     print(f"[AI] Result: {result}")
     return ProcessPromptResponse(**result)
+
+
+@app.post("/api/process-media", response_model=ProcessMediaResponse)
+async def process_media_files(request: ProcessMediaRequest):
+    """Process media files with AI. Validates file access and processes prompt."""
+    print(f"[Media] Processing {len(request.filePaths)} file(s): {request.prompt}")
+    
+    # Quick check: count accessible files
+    accessible = 0
+    for path in request.filePaths:
+        try:
+            if Path(path).exists() and os.access(path, os.R_OK):
+                accessible += 1
+                print(f"  ✓ {Path(path).name}")
+        except Exception as e:
+            print(f"  ✗ {path}: {e}")
+    
+    if accessible == 0:
+        return ProcessMediaResponse(
+            action=None,
+            message=f"Could not access any files. Check paths.",
+            error="FILE_ACCESS_ERROR"
+        )
+    
+    # Process prompt with AI
+    ai_result = process_prompt(request.prompt)
+    print(f"[Media] Result: action={ai_result.get('action')}, files OK={accessible}/{len(request.filePaths)}")
+    
+    return ProcessMediaResponse(**ai_result)
 
 
 @app.get("/health")

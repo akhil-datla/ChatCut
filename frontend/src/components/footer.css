@@ -20,13 +20,10 @@
   color: var(--uxp-host-text-color-secondary, white);
 }
 
-.clip-btn {
-  background: rgba(255,255,255,0.03);
-  padding: 6px 8px;
-  border-radius: 6px;
+.send-btn { 
+  padding: 6px 10px;
+  margin-left: 6px;
 }
-
-.send-btn { padding: 6px 10px; }
 
 .send-icon {
   width: 16px;
@@ -34,6 +31,64 @@
   fill: currentColor;
   vertical-align: middle;
 }
-.send-btn {
-  margin-left: 6px;
+
+/* Toggle Switch Styles */
+.toggle-container {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+  position: relative;
+}
+
+.toggle-switch {
+  width: 44px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  position: relative;
+  transition: background 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.toggle-switch:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.toggle-switch.active {
+  background: #0078d4;
+  border-color: #0078d4;
+}
+
+.toggle-slider {
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-switch.active .toggle-slider {
+  transform: translateX(20px);
+}
+
+.toggle-container:hover::after {
+  content: "AI Video Mode";
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(30, 30, 30, 0.95);
+  color: white;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }

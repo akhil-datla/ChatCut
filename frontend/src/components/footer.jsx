@@ -3,7 +3,15 @@ import "./footer.css";
 import { mediacoreBackend } from "uxp";
 export const Footer = (props) => {
   const [draft, setDraft] = React.useState("");
-  // Removed unused functions
+  
+  const toggleProcessMedia = () => {
+    if (props.setProcessMediaMode) {
+      const newValue = !props.processMediaMode;
+      props.setProcessMediaMode(newValue);
+      console.log(`[Footer] Process Media Mode toggled to: ${newValue}`);
+    }
+  };
+  
   return (
     <sp-body>
       <div className="plugin-footer">
@@ -39,12 +47,17 @@ export const Footer = (props) => {
             <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
           </svg>
         </sp-button>
-        <sp-button className="clip-btn" onClick={() => console.log("Clear Selected Clip (no-op)")}>
-          Clear
-        </sp-button>
-        <sp-button className="clip-btn" onClick={() => console.log("Add Another Clip (no-op)")}>
-          Add
-        </sp-button>
+        
+        {/* Toggle switch for Process Media Mode */}
+        <div 
+          className="toggle-container" 
+          title="AI Video Mode"
+          onClick={toggleProcessMedia}
+        >
+          <div className={`toggle-switch ${props.processMediaMode ? 'active' : ''}`}>
+            <div className="toggle-slider"></div>
+          </div>
+        </div>
       </div>
     </sp-body>
   );

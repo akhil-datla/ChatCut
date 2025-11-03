@@ -68,4 +68,48 @@ export async function processPrompt(prompt) {
   }
 }
 
+/**
+ * Process selected media file paths through AI
+ * 
+ * @param {string[]} filePaths - Array of media file paths from selected Project items
+ * @param {string} prompt - User's natural language request
+ * @returns {Promise<object>} AI response with action and parameters based on media analysis
+ * 
+ * Example response:
+ * {
+ *   action: "applyFilter",
+ *   parameters: { filterName: "AE.ADBE Black & White" },
+ *   confidence: 1.0,
+ *   message: "Applying black and white filter based on media analysis"
+ * }
+ */
+export async function processMedia(filePaths, prompt) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/process-media`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ filePaths, prompt }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log("[Backend] AI media analysis response:", data);
+    return data;
+  } catch (err) {
+    console.error("[Backend] Error processing media:", err.message);
+    
+    // Provide more helpful error messages
+    if (err.message.includes("Network request failed") || err.message.includes("Failed to fetch")) {
+      throw new Error("Backend server is not running. Please start the backend server on port 3001.");
+    }
+    
+    throw err;
+  }
+}
+
 
