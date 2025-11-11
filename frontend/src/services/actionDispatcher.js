@@ -122,7 +122,7 @@ const actionRegistry = {
 
   applyBlur: async (trackItems, parameters = {}) => {
     const items = Array.isArray(trackItems) ? trackItems : [trackItems];
-    const blurAmount = (parameters.blurAmount ?? parameters.blurriness ?? 5);
+    const blurAmount = (parameters.blurAmount != null ? parameters.blurAmount : (parameters.blurriness != null ? parameters.blurriness : 5));
     
     let successful = 0;
     let failed = 0;

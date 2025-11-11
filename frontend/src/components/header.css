@@ -1,4 +1,49 @@
 .plugin-header {
   color: var(--uxp-host-text-color-secondary, white);
   width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.undo-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid rgba(100, 150, 255, 0.5);
+  border-radius: 4px;
+  background: #4A90E2; /* Blue when enabled */
+  color: white;
+  transition: all 0.2s;
+}
+
+.undo-btn:hover:not(:disabled) {
+  background: #357ABD; /* Darker blue on hover */
+  border-color: rgba(100, 150, 255, 0.8);
+}
+
+.undo-btn:disabled,
+.undo-btn.disabled {
+  background: #666666 !important; /* Gray when disabled */
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.undo-btn.enabled:not(:disabled) {
+  background: #4A90E2 !important; /* Blue when enabled */
+  border-color: rgba(100, 150, 255, 0.5) !important;
+  color: white !important;
+  cursor: pointer !important;
+}
+
+.undo-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }

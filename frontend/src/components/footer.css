@@ -16,8 +16,19 @@
   padding: 8px 10px;
   border-radius: 6px;
   border: 1px solid #666;
-  background: rgba(255,255,255,0.02);
-  color: var(--uxp-host-text-color-secondary, white);
+  background: rgba(255,255,255,0.08);
+  color: #ffffff !important;
+  font-size: 14px;
+}
+
+.chat-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: #0078d4;
+  background: rgba(255,255,255,0.12);
 }
 
 .send-btn { 
