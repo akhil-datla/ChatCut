@@ -4,7 +4,7 @@ import { Footer } from "./footer";
 import { Header } from "./header";
 import { dispatchAction } from "../services/actionDispatcher";
 import { processPrompt, processMedia } from "../services/backendClient";
-import { getSelectedMediaFilePaths } from "../services/clipUtils";
+import { getSelectedMediaFilePaths, replaceClipMedia } from "../services/clipUtils";
 
 const ppro = require("premierepro");
 
@@ -128,10 +128,53 @@ export const Container = () => {
       // Determine which backend call to use based on processMediaMode
       let aiResponse;
       if (processMediaMode) {
-        // Get file paths from selected clips
+        const duration = await trackItems[0].getDuration();
+        console.log("Clip duration (seconds):", duration.seconds);
+        if (duration.seconds > 5){
+          writeToConsole("❌ Clip too long for generative AI processing. Please trim clip to 5 seconds or less.");
+          return;
+        }
         const filePaths = await getSelectedMediaFilePaths(project);
-        writeToConsole(`Sending ${filePaths.length} media file path(s) to Backend`);
-        aiResponse = await processMedia(filePaths, text);
+        
+        if (filePaths.length === 0) {
+          writeToConsole("❌ No media files selected. Please select a clip.");
+          return;
+        }
+        
+        if (filePaths.length > 1) {
+          writeToConsole("⚠️ Multiple clips selected. Processing first clip only.");
+        }
+        
+        const filePath = filePaths[0];
+        writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
+        aiResponse = await processMedia(filePath, text);
+        
+        // If we got a processed video back, replace it in the timeline
+        if (aiResponse.output_path && aiResponse.original_path) {
+          writeToConsole("🎬 Replacing clip with processed video...");
+          
+          // Find the track item that uses this original media
+          for (const trackItem of trackItems) {
+            try {
+              const projectItem = await trackItem.getProjectItem();
+              const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+              if (clipProjectItem) {
+                const mediaPath = await clipProjectItem.getMediaFilePath();
+                if (mediaPath === aiResponse.original_path) {
+                  const success = await replaceClipMedia(trackItem, aiResponse.output_path);
+                  if (success) {
+                    writeToConsole(`✅ Replaced clip with processed video!`);
+                  } else {
+                    writeToConsole(`⚠️ Failed to replace clip`);
+                  }
+                  break; // Only replace first matching clip
+                }
+              }
+            } catch (err) {
+              console.error("Error replacing clip:", err);
+            }
+          }
+        }
       } else {
         // Standard prompt-only processing
         aiResponse = await processPrompt(text);

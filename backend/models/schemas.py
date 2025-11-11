@@ -22,8 +22,8 @@ class ProcessPromptResponse(BaseModel):
 
 
 class ProcessMediaRequest(BaseModel):
-    """Request model for processing media files with AI"""
-    filePaths: List[str]
+    """Request model for processing a single media file with AI"""
+    filePath: str
     prompt: str
 
 
@@ -34,5 +34,7 @@ class ProcessMediaResponse(BaseModel):
     confidence: float = 0.0
     message: str = ""
     error: Optional[str] = None
-    mediaInfo: Optional[Dict[str, Any]] = None 
+    original_path: Optional[str] = None
+    output_path: Optional[str] = None
+    task_id: Optional[str] = None 
 

@@ -83,14 +83,14 @@ export async function processPrompt(prompt) {
  *   message: "Applying black and white filter based on media analysis"
  * }
  */
-export async function processMedia(filePaths, prompt) {
+export async function processMedia(filePath, prompt) {
   try {
     const response = await fetch(`${BACKEND_URL}/api/process-media`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ filePaths, prompt }),
+      body: JSON.stringify({ filePath, prompt }),
     });
 
     if (!response.ok) {
