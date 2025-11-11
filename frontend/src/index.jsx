@@ -21,21 +21,28 @@ const appsController = new PanelController(() => <App />, {
       label: "About this Plugin",
       enabled: true,
       checked: false,
-      oninvoke: () => aboutController.run(),
+      oninvoke: () => {
+        console.log("ChatCut - Edit videos with words, not clicks!");
+        alert("ChatCut\n\nEdit videos with words, not clicks!\n\nVersion 1.0.0");
+      },
     },
   ],
 });
 
+console.log("[Index] Setting up entrypoints");
+
 entrypoints.setup({
   plugin: {
     create(plugin) {
-      /* optional */ console.log("created", plugin);
+      console.log("[Index] Plugin created", plugin);
     },
     destroy() {
-      /* optional */ console.log("destroyed");
+      console.log("[Index] Plugin destroyed");
     },
   },
   panels: {
     apps: appsController,
   },
 });
+
+console.log("[Index] Entrypoints setup complete");

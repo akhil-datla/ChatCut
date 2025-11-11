@@ -30,12 +30,28 @@ export class PanelController {
   }
 
   create() {
+    console.log("[PanelController] Creating panel root");
     this[_root] = document.createElement("div");
     this[_root].style.height = "100vh";
     this[_root].style.overflow = "auto";
     this[_root].style.padding = "8px";
+    this[_root].style.backgroundColor = "#1e1e1e"; // Add background color for visibility
 
-    ReactDOM.render(this[_Component]({ panel: this }), this[_root]);
+    try {
+      console.log("[PanelController] Rendering React component");
+      const component = this[_Component]({ panel: this });
+      ReactDOM.render(component, this[_root]);
+      console.log("[PanelController] React component rendered successfully");
+    } catch (error) {
+      console.error("[PanelController] Error rendering React component:", error);
+      this[_root].innerHTML = `
+        <div style="padding: 20px; color: white;">
+          <h2>Error Loading Plugin</h2>
+          <p>${error.message || String(error)}</p>
+          <p>Check console for details.</p>
+        </div>
+      `;
+    }
 
     return this[_root];
   }
