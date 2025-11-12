@@ -107,7 +107,8 @@ async function restoreScaleKeyframes(trackItem, project, previousState) {
     });
     
     // If there were no previous keyframes, restore the static value
-    if (keyframes.length === 0 && staticValue !== null) {
+    if (keyframes.length === 0) {
+      const valueToRestore = staticValue != null ? staticValue : 100;
       await project.lockedAccess(async () => {
         project.executeTransaction((compound) => {
           // Disable time-varying and set static value
@@ -115,30 +116,13 @@ async function restoreScaleKeyframes(trackItem, project, previousState) {
           compound.addAction(timeVaryingAction);
           
           const action = componentParam.createSetValueAction(
-            componentParam.createKeyframe(staticValue),
-            false
+            componentParam.createKeyframe(Number(valueToRestore)),
+            true
           );
           compound.addAction(action);
         });
       });
-      log(`Restored to static scale: ${staticValue}%`, "green");
-      return true;
-    }
-    
-    // If no keyframes and no static value, use default 100%
-    if (keyframes.length === 0) {
-      await project.lockedAccess(async () => {
-        project.executeTransaction((compound) => {
-          const timeVaryingAction = componentParam.createSetTimeVaryingAction(false);
-          compound.addAction(timeVaryingAction);
-          const action = componentParam.createSetValueAction(
-            componentParam.createKeyframe(100),
-            false
-          );
-          compound.addAction(action);
-        });
-      });
-      log("Restored to default static scale: 100%", "green");
+      log(`Restored to static scale: ${valueToRestore}%`, "green");
       return true;
     }
     
@@ -211,29 +195,28 @@ async function removeComponent(trackItem, project, matchName) {
  * Remove a transition from a clip
  * @param {TrackItem} trackItem - The clip
  * @param {Project} project - Premiere Pro project
+ * @param {boolean} applyToStart - True to remove from start, false to remove from end
  * @returns {Promise<boolean>}
  */
-async function removeTransition(trackItem, project) {
+async function removeTransition(trackItem, project, applyToStart) {
   try {
-    const transitionCount = await trackItem.getVideoTransitionCount();
-    
-    if (transitionCount === 0) {
-      log("No transitions to remove", "yellow");
+    const position = applyToStart
+      ? ppro.Constants.TransitionPosition.START
+      : ppro.Constants.TransitionPosition.END;
+
+    const removeAction = await trackItem.createRemoveVideoTransitionAction(position);
+    if (!removeAction) {
+      log("No transition removal action returned", "yellow");
       return false;
     }
-    
-    // Get the last transition (most recently added) before locked access
-    const transition = await trackItem.getVideoTransition(transitionCount - 1);
-    
-    // Remove the last transition (most recently added)
+
     await project.lockedAccess(async () => {
       project.executeTransaction((compound) => {
-        const removeAction = trackItem.createRemoveVideoTransitionAction(transition);
         compound.addAction(removeAction);
       });
     });
-    
-    log("Removed transition", "green");
+
+    log(`Removed transition at ${applyToStart ? "start" : "end"}`, "green");
     return true;
   } catch (err) {
     log(`Error removing transition: ${err}`, "red");
@@ -320,16 +303,17 @@ export async function undoFilter(historyEntry) {
  * @returns {Promise<{successful: number, failed: number}>}
  */
 export async function undoTransition(historyEntry) {
-  const { trackItems } = historyEntry;
+  const { trackItems, parameters } = historyEntry;
   const items = Array.isArray(trackItems) ? trackItems : [trackItems];
   const project = await ppro.Project.getActiveProject();
+  const applyToStart = parameters && typeof parameters.applyToStart === "boolean" ? parameters.applyToStart : true;
   
   let successful = 0;
   let failed = 0;
   
   for (const trackItem of items) {
     try {
-      const result = await removeTransition(trackItem, project);
+      const result = await removeTransition(trackItem, project, applyToStart);
       if (result) {
         successful++;
       } else {
@@ -390,11 +374,11 @@ export async function capturePreviousState(trackItems, actionName) {
   if (actionName === 'zoomIn' || actionName === 'zoomOut') {
     for (const trackItem of items) {
       try {
-        const keyframes = await getScaleKeyframes(trackItem, project);
-        previousState.push({ keyframes });
+        const scaleState = await getScaleKeyframes(trackItem, project);
+        previousState.push(scaleState);
       } catch (err) {
         log(`Error capturing state for zoom: ${err}`, "yellow");
-        previousState.push({ keyframes: [] });
+        previousState.push({ keyframes: [], staticValue: null });
       }
     }
   }
