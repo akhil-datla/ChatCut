@@ -15,6 +15,8 @@ class ProcessPromptResponse(BaseModel):
     """Response model for AI-processed prompts"""
     action: Optional[str] = None
     parameters: Dict[str, Any] = {}
+    # 'actions' allows returning multiple edits in one prompt: list of {action: str, parameters: dict}
+    actions: Optional[List[Dict[str, Any]]] = None
     confidence: float = 0.0
     message: str = ""
     error: Optional[str] = None

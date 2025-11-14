@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
-import { dispatchAction } from "../services/actionDispatcher";
+import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
 import { processPrompt, processMedia } from "../services/backendClient";
 import { getSelectedMediaFilePaths, replaceClipMedia } from "../services/clipUtils";
 
@@ -17,7 +17,7 @@ export const Container = () => {
   const replyIndexRef = useRef(0);
   
   // Toggle for process media mode (send file paths to AI)
-  const [processMediaMode, setProcessMediaMode] = useState(true);
+  const [processMediaMode, setProcessMediaMode] = useState(false);
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -184,10 +184,18 @@ export const Container = () => {
       console.log("[Edit] AI Response:", aiResponse);
       
       // Show AI confirmation
+      // Support single-action responses (legacy) and multi-action responses (new)
       if (aiResponse.action) {
         writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
         if (aiResponse.message) {
           writeToConsole(`💬 AI message: ${aiResponse.message}`);
+        }
+      } else if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
+        writeToConsole(`✨ AI extracted ${aiResponse.actions.length} actions`);
+        if (aiResponse.message) writeToConsole(`💬 AI message: ${aiResponse.message}`);
+        for (let i = 0; i < aiResponse.actions.length; i++) {
+          const a = aiResponse.actions[i];
+          writeToConsole(`  • ${a.action} ${JSON.stringify(a.parameters || {})}`);
         }
       } else {
         // Handle special non-action responses
@@ -208,21 +216,30 @@ export const Container = () => {
         return;
       }
       
-      // Dispatch the action with extracted parameters
-      const result = await dispatchAction(
-        aiResponse.action,
-        trackItems,
-        aiResponse.parameters || {}
-      );
-      
-      // Report results
-      if (result.successful > 0) {
-        writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
-        if (result.failed > 0) {
-          writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
+      // Dispatch the action(s) with extracted parameters
+      let dispatchResult;
+      if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
+        // Multiple actions
+        dispatchResult = await dispatchActions(aiResponse.actions, trackItems);
+        const { summary } = dispatchResult;
+        if (summary.successful > 0) {
+          writeToConsole(`✅ Actions applied successfully to ${summary.successful} clip(s)!`);
+          if (summary.failed > 0) writeToConsole(`⚠️ Failed on ${summary.failed} clip(s)`);
+        } else {
+          writeToConsole(`❌ Failed to apply actions. Check console for errors.`);
         }
       } else {
-        writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
+        // Single-action (legacy)
+        dispatchResult = await dispatchAction(aiResponse.action, trackItems, aiResponse.parameters || {});
+        const result = dispatchResult;
+        if (result.successful > 0) {
+          writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
+          if (result.failed > 0) {
+            writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
+          }
+        } else {
+          writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
+        }
       }
       
     } catch (err) {

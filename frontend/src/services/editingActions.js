@@ -434,6 +434,21 @@ export async function applyFilter(item, filterName) {
     const project = await ppro.Project.getActiveProject();
     const action = await componentChain.createAppendComponentAction(component);
     await executeAction(project, action);
+    const compCount = componentChain.getComponentCount();
+    console.log("Component count after adding filter:", compCount);
+    for (let ci = 0; ci < compCount; ci++) {
+      const comp = await componentChain.getComponentAtIndex(ci);
+      const name = await comp.getMatchName();
+      const dispName = await comp.getDisplayName();
+      console.log(`Component ${ci}: ${name} (${dispName})`);
+      const paramCount = comp.getParamCount();
+      for (let pi = 0; pi < paramCount; pi++) {
+        const param = await comp.getParam(pi);
+        console.log(" Param details:", param);
+        const name = (param?.displayName || "").trim().toLowerCase();
+        console.log("  Param:", name);
+      }
+    }
 
     log(`Filter applied: ${filterName}`, "green");
     return true;
@@ -485,4 +500,193 @@ export async function testZoom() {
   });
 
   log(`🎉 Test complete! ${result.successful} clips zoomed successfully.`, "green");
+}
+
+// ============ PARAMETER MODIFICATION ============
+
+/**
+ * Get all modifiable parameters from a clip's effects
+ * @param {TrackItem} trackItem - The clip to inspect
+ * @returns {Promise<Array>} Array of parameter info objects
+ */
+export async function getEffectParameters(trackItem) {
+  try {
+    if (!trackItem) {
+      log("No track item provided", "red");
+      return [];
+    }
+
+    const componentChain = await trackItem.getComponentChain();
+    if (!componentChain) {
+      log("No component chain", "red");
+      return [];
+    }
+
+    const parameters = [];
+    const compCount = componentChain.getComponentCount();
+    
+    for (let ci = 0; ci < compCount; ci++) {
+      const comp = await componentChain.getComponentAtIndex(ci);
+      const matchName = await comp.getMatchName();
+      const displayName = await comp.getDisplayName();
+      
+      // Skip built-in components (Opacity, Motion) unless user explicitly wants them
+      const isBuiltIn = matchName.includes("ADBE Opacity") || matchName.includes("ADBE Motion");
+      
+      const paramCount = comp.getParamCount();
+      for (let pi = 0; pi < paramCount; pi++) {
+        const param = await comp.getParam(pi);
+        const paramName = (param?.displayName || "").trim();
+        
+        // Skip empty params
+        if (!paramName) continue;
+        
+        parameters.push({
+          componentIndex: ci,
+          paramIndex: pi,
+          componentMatchName: matchName,
+          componentDisplayName: displayName,
+          paramDisplayName: paramName,
+          param: param,
+          isBuiltIn: isBuiltIn
+        });
+      }
+    }
+    
+    log(`Found ${parameters.length} parameters across ${compCount} components`, "blue");
+    return parameters;
+  } catch (err) {
+    log(`Error getting effect parameters: ${err}`, "red");
+    return [];
+  }
+}
+
+/**
+ * Modify a specific effect parameter on a clip
+ * @param {TrackItem} trackItem - The clip to modify
+ * @param {Object} options - Modification options
+ * @param {string} options.parameterName - Name of the parameter to modify (case-insensitive, fuzzy matched)
+ * @param {number} options.value - New value for the parameter
+ * @param {string} options.componentName - (Optional) Name of the component/effect containing the parameter
+ * @param {boolean} options.excludeBuiltIn - Whether to exclude built-in effects like Motion/Opacity (default: true)
+ * @returns {Promise<boolean>}
+ */
+export async function modifyEffectParameter(trackItem, options = {}) {
+  try {
+    const {
+      parameterName,
+      value,
+      componentName = null,
+      excludeBuiltIn = true
+    } = options;
+
+    if (!parameterName) {
+      log("Parameter name is required", "red");
+      return false;
+    }
+
+    if (value === undefined || value === null) {
+      log("Parameter value is required", "red");
+      return false;
+    }
+
+    log(`Looking for parameter "${parameterName}" to set to ${value}`, "blue");
+
+    // Get all parameters
+    const allParams = await getEffectParameters(trackItem);
+    
+    if (allParams.length === 0) {
+      log("No parameters found on this clip", "red");
+      return false;
+    }
+
+    // Filter parameters
+    let candidates = allParams;
+    
+    // Exclude built-in if requested
+    if (excludeBuiltIn) {
+      candidates = candidates.filter(p => !p.isBuiltIn);
+      log(`Filtered to ${candidates.length} non-built-in parameters`, "blue");
+    }
+    
+    // Filter by component name if specified
+    if (componentName) {
+      const componentLower = componentName.toLowerCase();
+      candidates = candidates.filter(p => 
+        p.componentDisplayName.toLowerCase().includes(componentLower) ||
+        p.componentMatchName.toLowerCase().includes(componentLower)
+      );
+      log(`Filtered to ${candidates.length} parameters in component "${componentName}"`, "blue");
+    }
+    
+    // Find matching parameter (fuzzy match)
+    const paramLower = parameterName.toLowerCase();
+    const match = candidates.find(p => 
+      p.paramDisplayName.toLowerCase() === paramLower ||
+      p.paramDisplayName.toLowerCase().includes(paramLower) ||
+      paramLower.includes(p.paramDisplayName.toLowerCase())
+    );
+
+    if (!match) {
+      log(`❌ Parameter "${parameterName}" not found`, "red");
+      log(`Available parameters: ${candidates.map(p => p.paramDisplayName).join(', ')}`, "yellow");
+      return false;
+    }
+
+    log(`✓ Found parameter: "${match.paramDisplayName}" in ${match.componentDisplayName}`, "green");
+
+    // Get project for executing action
+    const project = await ppro.Project.getActiveProject();
+    if (!project) {
+      log("No active project", "red");
+      return false;
+    }
+
+    // Set the value
+    const param = match.param;
+    const keyframe = param.createKeyframe(Number(value));
+    const setAction = param.createSetValueAction(keyframe, true);
+    await executeAction(project, setAction);
+
+    log(`✅ Parameter "${match.paramDisplayName}" set to ${value}`, "green");
+    return true;
+
+  } catch (err) {
+    log(`❌ Error modifying parameter: ${err}`, "red");
+    console.error("Parameter modification error details:", err);
+    return false;
+  }
+}
+
+/**
+ * Modify multiple parameters on a clip in batch
+ * @param {TrackItem} trackItem - The clip to modify
+ * @param {Array<Object>} modifications - Array of {parameterName, value, componentName?} objects
+ * @param {boolean} excludeBuiltIn - Whether to exclude built-in effects (default: true)
+ * @returns {Promise<{successful: number, failed: number}>}
+ */
+export async function modifyEffectParametersBatch(trackItem, modifications, excludeBuiltIn = true) {
+  log(`Modifying ${modifications.length} parameter(s) on clip...`, "blue");
+  
+  let successful = 0;
+  let failed = 0;
+
+  for (let i = 0; i < modifications.length; i++) {
+    const mod = modifications[i];
+    log(`Processing modification ${i + 1}/${modifications.length}: ${mod.parameterName} = ${mod.value}`, "blue");
+    
+    const result = await modifyEffectParameter(trackItem, {
+      ...mod,
+      excludeBuiltIn
+    });
+    
+    if (result) {
+      successful++;
+    } else {
+      failed++;
+    }
+  }
+
+  log(`✅ Batch complete: ${successful} successful, ${failed} failed`, "green");
+  return { successful, failed };
 }
