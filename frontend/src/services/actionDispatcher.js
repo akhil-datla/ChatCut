@@ -183,13 +183,19 @@ const actionRegistry = {
     let successful = 0;
     let failed = 0;
     
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       try {
         const result = await adjustVolume(item, Number(volumeDb));
-        if (result) successful++;
-        else failed++;
+        if (result) {
+          successful++;
+          console.log(`[Dispatcher] Volume adjusted successfully on clip ${i + 1}/${items.length}`);
+        } else {
+          failed++;
+          console.warn(`[Dispatcher] Volume adjustment failed on clip ${i + 1}/${items.length} - no volume parameter found`);
+        }
       } catch (err) {
-        console.error(`Error adjusting volume:`, err);
+        console.error(`[Dispatcher] Error adjusting volume on clip ${i + 1}/${items.length}:`, err);
         failed++;
       }
     }

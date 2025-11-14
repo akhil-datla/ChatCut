@@ -470,15 +470,72 @@ export async function applyAudioFilter(audioClip, filterDisplayName) {
     const displayNames = await ppro.AudioFilterFactory.getDisplayNames();
     console.log("Available audio filters:", displayNames);
     
-    // Find matching filter (case-insensitive)
-    const matchingName = displayNames.find(name => 
-      name.toLowerCase() === filterDisplayName.toLowerCase()
+    // Normalize the search term (lowercase, remove common words)
+    const normalizedSearch = filterDisplayName.toLowerCase().trim();
+    
+    // Common name mappings (user-friendly names -> actual filter names)
+    const nameMappings = {
+      'reverb': ['Studio Reverb', 'Convolution Reverb', 'Surround Reverb', 'AUReverb2', 'AUMatrixReverb'],
+      'eq': ['Parametric Equalizer', 'Simple Parametric EQ', 'Graphic Equalizer (10 Bands)', 'Graphic Equalizer (20 Bands)', 'Graphic Equalizer (30 Bands)'],
+      'equalizer': ['Parametric Equalizer', 'Simple Parametric EQ', 'Graphic Equalizer (10 Bands)', 'Graphic Equalizer (20 Bands)', 'Graphic Equalizer (30 Bands)'],
+      'parametric eq': ['Parametric Equalizer', 'Simple Parametric EQ'],
+      'noise reduction': ['Adaptive Noise Reduction', 'DeNoise'],
+      'denoise': ['Adaptive Noise Reduction', 'DeNoise'],
+      'deesser': ['DeEsser'],
+      'chorus': ['Chorus/Flanger'],
+      'flanger': ['Chorus/Flanger', 'Flanger'],
+      'delay': ['Delay', 'Multitap Delay', 'Analog Delay'],
+      'distortion': ['Distortion'],
+      'compressor': ['Multiband Compressor', 'Single-band Compressor', 'Tube-modeled Compressor'],
+      'limiter': ['Hard Limiter'],
+      'phaser': ['Phaser'],
+      'pitch': ['Pitch Shifter', 'AUPitch', 'AUNewPitch'],
+    };
+    
+    let matchingName = null;
+    
+    // First, try exact match (case-insensitive)
+    matchingName = displayNames.find(name => 
+      name.toLowerCase() === normalizedSearch
     );
     
+    // If not found, try name mappings
+    if (!matchingName && nameMappings[normalizedSearch]) {
+      const candidates = nameMappings[normalizedSearch];
+      for (const candidate of candidates) {
+        const found = displayNames.find(name => name === candidate);
+        if (found) {
+          matchingName = found;
+          break;
+        }
+      }
+    }
+    
+    // If still not found, try fuzzy matching (contains search term)
     if (!matchingName) {
-      log(`Audio filter not found: ${filterDisplayName}. Available: ${displayNames.join(', ')}`, "red");
+      matchingName = displayNames.find(name => 
+        name.toLowerCase().includes(normalizedSearch) || 
+        normalizedSearch.includes(name.toLowerCase().split(' ')[0]) // Match first word
+      );
+    }
+    
+    // If still not found, try partial word matching
+    if (!matchingName) {
+      const searchWords = normalizedSearch.split(/\s+/);
+      matchingName = displayNames.find(name => {
+        const nameLower = name.toLowerCase();
+        return searchWords.some(word => nameLower.includes(word));
+      });
+    }
+    
+    if (!matchingName) {
+      log(`Audio filter not found: ${filterDisplayName}`, "red");
+      log(`Available filters: ${displayNames.join(', ')}`, "yellow");
+      log(`💡 Tip: Try using the exact filter name, or a common name like "reverb", "eq", "delay"`, "yellow");
       return false;
     }
+    
+    log(`Matched "${filterDisplayName}" to "${matchingName}"`, "blue");
 
     // Create audio filter component
     const audioFilterComponent = await ppro.AudioFilterFactory.createComponentByDisplayName(
@@ -608,7 +665,7 @@ export async function adjustVolume(audioClip, volumeDb = 0) {
 
     if (!gainParam) {
       log("Could not find or create gain/volume parameter", "red");
-      log("💡 Tip: Try applying a 'Gain' or 'Volume' audio filter manually first", "yellow");
+      log("💡 Tip: This clip may not have a volume parameter. Try applying 'Channel Volume' or 'Gain' audio filter manually first, or select a different audio clip.", "yellow");
       return false;
     }
 
