@@ -580,7 +580,8 @@ export async function adjustVolume(audioClip, volumeDb = 0) {
         log(`Available audio filters: ${displayNames.join(', ')}`, "blue");
         
         // Try common names for gain/volume filters (case-insensitive match)
-        const gainFilterNames = ["Gain", "Volume", "Hard Limiter", "Dynamics"];
+        // Note: "Volume" might not be a filter - try "Channel Volume" or "Gain" instead
+        const gainFilterNames = ["Channel Volume", "Gain", "Hard Limiter", "Dynamics", "Volume"];
         let gainFilterName = null;
         
         for (const name of gainFilterNames) {
@@ -593,24 +594,24 @@ export async function adjustVolume(audioClip, volumeDb = 0) {
         
         if (!gainFilterName) {
           log(`Could not find Gain/Volume filter. Available filters: ${displayNames.join(', ')}`, "yellow");
-          // Try the first available filter as fallback (might work)
-          if (displayNames.length > 0) {
-            gainFilterName = displayNames[0];
-            log(`Using first available filter as fallback: ${gainFilterName}`, "yellow");
-          } else {
-            log("No audio filters available", "red");
-            return false;
-          }
+          log("💡 Tip: Audio clips may have built-in volume. Try selecting clips that already have volume/gain effects applied.", "yellow");
+          return false;
         }
 
         // Create and add the gain filter
         log(`Adding audio filter: ${gainFilterName}`, "blue");
-        const gainFilter = await ppro.AudioFilterFactory.createComponentByDisplayName(
-          gainFilterName,
-          audioClip
-        );
-        const appendAction = await audioComponentChain.createAppendComponentAction(gainFilter);
-        await executeAction(project, appendAction);
+        try {
+          const gainFilter = await ppro.AudioFilterFactory.createComponentByDisplayName(
+            gainFilterName,
+            audioClip
+          );
+          const appendAction = await audioComponentChain.createAppendComponentAction(gainFilter);
+          await executeAction(project, appendAction);
+        } catch (err) {
+          log(`Could not add ${gainFilterName} filter: ${err.message || err}`, "yellow");
+          log("💡 Tip: Some audio filters may not be compatible. Try applying 'Channel Volume' manually first.", "yellow");
+          return false;
+        }
         
         // Search again for the gain parameter
         gainParam = await findGainParam();
@@ -632,9 +633,17 @@ export async function adjustVolume(audioClip, volumeDb = 0) {
       const isTimeVarying = await gainParam.isTimeVarying();
       if (isTimeVarying) {
         const startTime = await ppro.TickTime.createWithSeconds(0);
-        currentValue = await gainParam.getValueAtTime(startTime);
+        const valueAtTime = await gainParam.getValueAtTime(startTime);
+        // Extract numeric value if it's a Keyframe object
+        currentValue = (valueAtTime && typeof valueAtTime.getValue === 'function') 
+          ? await valueAtTime.getValue() 
+          : Number(valueAtTime) || 0;
       } else {
-        currentValue = await gainParam.getStartValue();
+        const startVal = await gainParam.getStartValue();
+        // Extract numeric value if it's a Keyframe object
+        currentValue = (startVal && typeof startVal.getValue === 'function') 
+          ? await startVal.getValue() 
+          : Number(startVal) || 0;
       }
     } catch (err) {
       // If we can't get current value, assume 0
@@ -643,21 +652,31 @@ export async function adjustVolume(audioClip, volumeDb = 0) {
     }
 
     // Calculate new value (add the adjustment to current value)
-    const newValue = currentValue + Number(volumeDb);
+    const newValue = Number(currentValue) + Number(volumeDb);
     log(`Current gain: ${currentValue}dB, New gain: ${newValue}dB`, "blue");
 
     // Set value using keyframe pattern (same as video filters)
     try {
-      const keyframe = gainParam.createKeyframe(newValue);
-      const setAction = gainParam.createSetValueAction(keyframe, true);
+      // Try creating keyframe with numeric value
+      const keyframe = await gainParam.createKeyframe(Number(newValue));
+      const setAction = await gainParam.createSetValueAction(keyframe, true);
       await executeAction(project, setAction);
       
       log(`✅ Volume adjusted: ${currentValue}dB → ${newValue}dB (${volumeDb > 0 ? '+' : ''}${volumeDb}dB)`, "green");
       return true;
     } catch (err) {
-      log(`Error setting volume: ${err}`, "red");
-      console.error("Error setting gain value:", err);
-      return false;
+      // If keyframe method fails, try direct setValue (some audio params might not support keyframes)
+      try {
+        log(`Keyframe method failed, trying direct setValue...`, "yellow");
+        const setValueAction = await gainParam.createSetValueAction(Number(newValue), false);
+        await executeAction(project, setValueAction);
+        log(`✅ Volume adjusted (direct): ${currentValue}dB → ${newValue}dB`, "green");
+        return true;
+      } catch (err2) {
+        log(`Error setting volume: ${err2.message || err2}`, "red");
+        console.error("Error setting gain value:", err2);
+        return false;
+      }
     }
   } catch (err) {
     log(`Error adjusting volume: ${err}`, "red");

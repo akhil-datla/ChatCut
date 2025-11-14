@@ -50,8 +50,22 @@ export const Container = () => {
       
       // Get active project
       const project = await ppro.Project.getActiveProject();
+      if (!project) {
+        writeToConsole("❌ No active project. Please open a project in Premiere Pro.");
+        return;
+      }
+      
       const sequence = await project.getActiveSequence();
+      if (!sequence) {
+        writeToConsole("❌ No active sequence. Please open a sequence in Premiere Pro.");
+        return;
+      }
+      
       const selection = await sequence.getSelection();
+      if (!selection) {
+        writeToConsole("❌ Could not get selection. Please select clips on the timeline.");
+        return;
+      }
       
       // First, check what type of action this might be by processing the prompt
       // This helps us determine if we need video or audio clips
