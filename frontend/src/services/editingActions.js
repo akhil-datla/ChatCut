@@ -324,7 +324,7 @@ export async function applyBlur(trackItem, blurriness = 50) {
         const paramCount = comp.getParamCount();
         for (let pi = 0; pi < paramCount; pi++) {
           const param = await comp.getParam(pi);
-          const name = (param?.displayName || "").trim().toLowerCase();
+          const name = ((param && param.displayName) || "").trim().toLowerCase();
           if (name === "blurriness") {
             return param;
           }
@@ -439,6 +439,214 @@ export async function applyFilter(item, filterName) {
     return true;
   } catch (err) {
     log(`Error applying filter: ${err}`, "red");
+    return false;
+  }
+}
+
+// ============ AUDIO EFFECTS ============
+
+/**
+ * Apply an audio filter/effect to an audio clip
+ * @param {AudioClipTrackItem} audioClip - The audio clip to apply effect to
+ * @param {string} filterDisplayName - Display name of the audio filter (e.g., "Parametric EQ", "Reverb")
+ * @returns {Promise<boolean>}
+ */
+export async function applyAudioFilter(audioClip, filterDisplayName) {
+  try {
+    log(`Applying audio filter: ${filterDisplayName}`, "blue");
+    
+    const project = await ppro.Project.getActiveProject();
+    if (!project) {
+      log("No active project", "red");
+      return false;
+    }
+
+    if (!audioClip) {
+      log("No audio clip provided", "red");
+      return false;
+    }
+
+    // Get available audio filter display names
+    const displayNames = await ppro.AudioFilterFactory.getDisplayNames();
+    console.log("Available audio filters:", displayNames);
+    
+    // Find matching filter (case-insensitive)
+    const matchingName = displayNames.find(name => 
+      name.toLowerCase() === filterDisplayName.toLowerCase()
+    );
+    
+    if (!matchingName) {
+      log(`Audio filter not found: ${filterDisplayName}. Available: ${displayNames.join(', ')}`, "red");
+      return false;
+    }
+
+    // Create audio filter component
+    const audioFilterComponent = await ppro.AudioFilterFactory.createComponentByDisplayName(
+      matchingName,
+      audioClip
+    );
+
+    // Get audio component chain and append the filter
+    const audioComponentChain = await audioClip.getComponentChain();
+    const action = await audioComponentChain.createAppendComponentAction(audioFilterComponent);
+    await executeAction(project, action);
+
+    log(`✅ Audio filter applied: ${matchingName}`, "green");
+    return true;
+  } catch (err) {
+    log(`Error applying audio filter: ${err}`, "red");
+    console.error("applyAudioFilter error details:", err);
+    return false;
+  }
+}
+
+/**
+ * Adjust volume of an audio clip
+ * @param {AudioClipTrackItem} audioClip - The audio clip to adjust
+ * @param {number} volumeDb - Volume adjustment in decibels (positive = louder, negative = quieter)
+ * @returns {Promise<boolean>}
+ */
+export async function adjustVolume(audioClip, volumeDb = 0) {
+  try {
+    log(`Adjusting volume by ${volumeDb}dB`, "blue");
+    
+    const project = await ppro.Project.getActiveProject();
+    if (!project) {
+      log("No active project", "red");
+      return false;
+    }
+
+    if (!audioClip) {
+      log("No audio clip provided", "red");
+      return false;
+    }
+
+    // Get audio component chain
+    const audioComponentChain = await audioClip.getComponentChain();
+    if (!audioComponentChain) {
+      log("No audio component chain", "red");
+      return false;
+    }
+
+    // Helper to find a Gain/Volume parameter across all components
+    const findGainParam = async () => {
+      const compCount = await audioComponentChain.getComponentCount();
+      for (let ci = 0; ci < compCount; ci++) {
+        try {
+          const comp = await audioComponentChain.getComponentAtIndex(ci);
+          const paramCount = await comp.getParamCount();
+          for (let pi = 0; pi < paramCount; pi++) {
+            try {
+              const param = await comp.getParam(pi);
+              const displayName = ((param && param.displayName) || "").trim().toLowerCase();
+              // Look for gain/volume parameters (common names: "Gain", "Volume", "Level")
+              if (displayName === "gain" || displayName === "volume" || displayName === "level") {
+                return param;
+              }
+            } catch (err) {
+              // Continue searching
+            }
+          }
+        } catch (err) {
+          // Continue searching
+        }
+      }
+      return null;
+    };
+
+    // Try to find existing Gain/Volume parameter
+    let gainParam = await findGainParam();
+
+    // If not found, try to add a "Gain" or "Volume" audio filter
+    if (!gainParam) {
+      try {
+        // Get available audio filter display names
+        const displayNames = await ppro.AudioFilterFactory.getDisplayNames();
+        log(`Available audio filters: ${displayNames.join(', ')}`, "blue");
+        
+        // Try common names for gain/volume filters (case-insensitive match)
+        const gainFilterNames = ["Gain", "Volume", "Hard Limiter", "Dynamics"];
+        let gainFilterName = null;
+        
+        for (const name of gainFilterNames) {
+          const matching = displayNames.find(dn => dn.toLowerCase() === name.toLowerCase());
+          if (matching) {
+            gainFilterName = matching;
+            break;
+          }
+        }
+        
+        if (!gainFilterName) {
+          log(`Could not find Gain/Volume filter. Available filters: ${displayNames.join(', ')}`, "yellow");
+          // Try the first available filter as fallback (might work)
+          if (displayNames.length > 0) {
+            gainFilterName = displayNames[0];
+            log(`Using first available filter as fallback: ${gainFilterName}`, "yellow");
+          } else {
+            log("No audio filters available", "red");
+            return false;
+          }
+        }
+
+        // Create and add the gain filter
+        log(`Adding audio filter: ${gainFilterName}`, "blue");
+        const gainFilter = await ppro.AudioFilterFactory.createComponentByDisplayName(
+          gainFilterName,
+          audioClip
+        );
+        const appendAction = await audioComponentChain.createAppendComponentAction(gainFilter);
+        await executeAction(project, appendAction);
+        
+        // Search again for the gain parameter
+        gainParam = await findGainParam();
+      } catch (err) {
+        log(`Could not add Gain/Volume filter: ${err}`, "yellow");
+        console.error("Error adding gain filter:", err);
+      }
+    }
+
+    if (!gainParam) {
+      log("Could not find or create gain/volume parameter", "red");
+      log("💡 Tip: Try applying a 'Gain' or 'Volume' audio filter manually first", "yellow");
+      return false;
+    }
+
+    // Get current value (if time-varying is enabled, get value at start)
+    let currentValue = 0;
+    try {
+      const isTimeVarying = await gainParam.isTimeVarying();
+      if (isTimeVarying) {
+        const startTime = await ppro.TickTime.createWithSeconds(0);
+        currentValue = await gainParam.getValueAtTime(startTime);
+      } else {
+        currentValue = await gainParam.getStartValue();
+      }
+    } catch (err) {
+      // If we can't get current value, assume 0
+      log(`Could not get current gain value, assuming 0: ${err}`, "yellow");
+      currentValue = 0;
+    }
+
+    // Calculate new value (add the adjustment to current value)
+    const newValue = currentValue + Number(volumeDb);
+    log(`Current gain: ${currentValue}dB, New gain: ${newValue}dB`, "blue");
+
+    // Set value using keyframe pattern (same as video filters)
+    try {
+      const keyframe = gainParam.createKeyframe(newValue);
+      const setAction = gainParam.createSetValueAction(keyframe, true);
+      await executeAction(project, setAction);
+      
+      log(`✅ Volume adjusted: ${currentValue}dB → ${newValue}dB (${volumeDb > 0 ? '+' : ''}${volumeDb}dB)`, "green");
+      return true;
+    } catch (err) {
+      log(`Error setting volume: ${err}`, "red");
+      console.error("Error setting gain value:", err);
+      return false;
+    }
+  } catch (err) {
+    log(`Error adjusting volume: ${err}`, "red");
+    console.error("adjustVolume error details:", err);
     return false;
   }
 }

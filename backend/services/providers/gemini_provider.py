@@ -137,6 +137,8 @@ Available actions:
 - applyFilter: Apply a video filter (parameters: filterName)
 - applyTransition: Apply a transition (parameters: transitionName, duration)
 - applyBlur: Apply Gaussian blur (parameters: blurAmount)
+- applyAudioFilter: Apply an audio effect/filter to an audio clip (parameters: filterDisplayName)
+- adjustVolume: Adjust volume of an audio clip (parameters: volumeDb)
 
 Parameters:
 - endScale: Target zoom scale as percentage (default: 150 for zoomIn, 100 for zoomOut)
@@ -417,6 +419,14 @@ FILTER examples:
 - "add blur 30" → {"action": "applyBlur", "parameters": {"blurAmount": 30}}
 - "make it a little blurry" → {"action": "applyBlur", "parameters": {"blurAmount": 25}}
 - "increase blurriness to 80" → {"action": "applyBlur", "parameters": {"blurAmount": 80}}
+AUDIO EFFECT examples:
+- "adjust volume by 3 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
+- "make it louder by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 6}}
+- "reduce volume by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}}
+- "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+- "add reverb" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Reverb"}}
+- "apply parametric eq" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Parametric EQ"}}
+- "add noise reduction" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "DeNoise"}}
 
 Return ONLY valid JSON in this format:
 {

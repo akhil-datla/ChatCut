@@ -53,53 +53,106 @@ export const Container = () => {
       const sequence = await project.getActiveSequence();
       const selection = await sequence.getSelection();
       
-      // Get only video track items (Motion effect only works on video clips)
-      const trackItems = await selection.getTrackItems(
-        ppro.Constants.TrackItemType.CLIP, 
-        false  // false means only video clips
-      );
+      // First, check what type of action this might be by processing the prompt
+      // This helps us determine if we need video or audio clips
+      let aiResponse;
+      try {
+        aiResponse = await processPrompt(text);
+        console.log("[SelectClips] AI preview:", aiResponse);
+      } catch (err) {
+        // If AI fails, default to video clips
+        console.warn("[SelectClips] Could not preview AI response, defaulting to video clips");
+      }
       
-      // Filter to video clips only if needed
-      const videoTrackItems = [];
-      for (let i = 0; i < trackItems.length; i++) {
-        try {
-          const clip = trackItems[i];
-          const componentChain = await clip.getComponentChain();
-          const componentCount = await componentChain.getComponentCount();
-          
-          // Check if clip has video components (Motion, Transform, etc.)
-          let hasVideo = false;
-          for (let j = 0; j < componentCount; j++) {
+      const actionType = aiResponse && aiResponse.action;
+      const isAudioAction = actionType === 'adjustVolume' || actionType === 'applyAudioFilter';
+      
+      if (isAudioAction) {
+        // Get audio track items
+        const trackItems = await selection.getTrackItems(
+          ppro.Constants.TrackItemType.CLIP, 
+          true  // true means include all clip types (we'll filter for audio)
+        );
+        
+        // Filter to audio clips only
+        const audioTrackItems = [];
+        for (let i = 0; i < trackItems.length; i++) {
+          try {
+            const clip = trackItems[i];
+            // Try to get audio component chain - if it works, it's an audio clip
             try {
-              const component = await componentChain.getComponentAtIndex(j);
-              const matchName = await component.getMatchName();
-              if (matchName.includes("Motion") || matchName.includes("ADBE") || matchName.includes("Video")) {
-                hasVideo = true;
-                break;
+              const audioComponentChain = await clip.getComponentChain();
+              // Check if it's an audio clip by trying to get audio-specific properties
+              const mediaType = await clip.getMediaType();
+              // If we can get component chain without error, it might be audio
+              // More reliable: check if clip is on an audio track
+              const trackIndex = await clip.getTrackIndex();
+              const audioTrackCount = await sequence.getAudioTrackCount();
+              
+              if (trackIndex < audioTrackCount) {
+                audioTrackItems.push(clip);
               }
             } catch (err) {
-              // Continue checking
+              // Not an audio clip, skip
             }
+          } catch (err) {
+            // Skip this clip
           }
-          
-          if (hasVideo) {
-            videoTrackItems.push(clip);
-          }
-        } catch (err) {
-          // Skip this clip
         }
+        
+        if (audioTrackItems.length === 0) {
+          writeToConsole("❌ No audio clips selected. Please select audio clips on audio tracks.");
+          return;
+        }
+        
+        console.log("Select Audio Clips with prompt:", { trackItems: audioTrackItems, text });
+        editClips(ppro, project, audioTrackItems, text, aiResponse);
+      } else {
+        // Get video track items (default behavior)
+        const trackItems = await selection.getTrackItems(
+          ppro.Constants.TrackItemType.CLIP, 
+          false  // false means only video clips
+        );
+        
+        // Filter to video clips only if needed
+        const videoTrackItems = [];
+        for (let i = 0; i < trackItems.length; i++) {
+          try {
+            const clip = trackItems[i];
+            const componentChain = await clip.getComponentChain();
+            const componentCount = await componentChain.getComponentCount();
+            
+            // Check if clip has video components (Motion, Transform, etc.)
+            let hasVideo = false;
+            for (let j = 0; j < componentCount; j++) {
+              try {
+                const component = await componentChain.getComponentAtIndex(j);
+                const matchName = await component.getMatchName();
+                if (matchName.includes("Motion") || matchName.includes("ADBE") || matchName.includes("Video")) {
+                  hasVideo = true;
+                  break;
+                }
+              } catch (err) {
+                // Continue checking
+              }
+            }
+            
+            if (hasVideo) {
+              videoTrackItems.push(clip);
+            }
+          } catch (err) {
+            // Skip this clip
+          }
+        }
+        
+        if (videoTrackItems.length === 0) {
+          writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
+          return;
+        }
+        
+        console.log("Select Video Clips with prompt:", { trackItems: videoTrackItems, text });
+        editClips(ppro, project, videoTrackItems, text, aiResponse);
       }
-      
-      if (videoTrackItems.length === 0) {
-        writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
-        return;
-      }
-      
-      console.log("Select Clips with prompt:", { trackItems: videoTrackItems, text });
-      // Send prompt and trackitems to backend
-      // Axios or fetch logic would go here
-
-      editClips(ppro, project, videoTrackItems, text);
 
 
 
@@ -113,7 +166,7 @@ export const Container = () => {
     }
   }
 
-  async function editClips(ppro, project, trackItems, text) {
+  async function editClips(ppro, project, trackItems, text, precomputedAiResponse = null) {
     try {
       // Check if we have selected clips
       if (!trackItems || trackItems.length === 0) {
@@ -123,18 +176,25 @@ export const Container = () => {
       }
       
       writeToConsole(`Found ${trackItems.length} selected clip(s)`);
-      writeToConsole(`🤖 Sending to AI: "${text}"`);
       
-      // Determine which backend call to use based on processMediaMode
-      let aiResponse;
-      if (processMediaMode) {
-        // Get file paths from selected clips
-        const filePaths = await getSelectedMediaFilePaths(project);
-        writeToConsole(`Sending ${filePaths.length} media file path(s) to Backend`);
-        aiResponse = await processMedia(filePaths, text);
+      // Use precomputed AI response if available, otherwise process the prompt
+      let aiResponse = precomputedAiResponse;
+      
+      if (!aiResponse) {
+        writeToConsole(`🤖 Sending to AI: "${text}"`);
+        
+        // Determine which backend call to use based on processMediaMode
+        if (processMediaMode) {
+          // Get file paths from selected clips
+          const filePaths = await getSelectedMediaFilePaths(project);
+          writeToConsole(`Sending ${filePaths.length} media file path(s) to Backend`);
+          aiResponse = await processMedia(filePaths, text);
+        } else {
+          // Standard prompt-only processing
+          aiResponse = await processPrompt(text);
+        }
       } else {
-        // Standard prompt-only processing
-        aiResponse = await processPrompt(text);
+        writeToConsole(`🤖 Using precomputed AI response`);
       }
       
       // Log AI response for debugging

@@ -46,5 +46,23 @@ module.exports = {
     new CopyPlugin(["plugin"], {
       copyUnmodified: true,
     }),
+    // Copy built files back to plugin folder after build
+    {
+      apply: (compiler) => {
+        compiler.hooks.afterEmit.tap('CopyToPlugin', () => {
+          const fs = require('fs');
+          const path = require('path');
+          const distPath = path.resolve(__dirname, 'dist');
+          const pluginPath = path.resolve(__dirname, 'plugin');
+          ['index.js', 'index.html', 'manifest.json'].forEach(file => {
+            const src = path.join(distPath, file);
+            const dest = path.join(pluginPath, file);
+            if (fs.existsSync(src)) {
+              fs.copyFileSync(src, dest);
+            }
+          });
+        });
+      }
+    },
   ],
 };

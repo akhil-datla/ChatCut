@@ -12,7 +12,9 @@ import {
   zoomOutBatch,
   applyFilter,
   applyTransition, 
-  applyBlur
+  applyBlur,
+  applyAudioFilter,
+  adjustVolume
 } from './editingActions.js';
 
 /**
@@ -122,7 +124,7 @@ const actionRegistry = {
 
   applyBlur: async (trackItems, parameters = {}) => {
     const items = Array.isArray(trackItems) ? trackItems : [trackItems];
-    const blurAmount = (parameters.blurAmount ?? parameters.blurriness ?? 5);
+    const blurAmount = (parameters.blurAmount || parameters.blurriness || 5);
     
     let successful = 0;
     let failed = 0;
@@ -134,6 +136,60 @@ const actionRegistry = {
         else failed++;
       } catch (err) {
         console.error(`Error applying blur to clip:`, err);
+        failed++;
+      }
+    }
+    
+    return { successful, failed };
+  },
+
+  /**
+   * Apply audio filter/effect to audio clip(s)
+   * Parameters: { filterDisplayName }
+   */
+  applyAudioFilter: async (trackItems, parameters = {}) => {
+    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const { filterDisplayName } = parameters;
+    
+    if (!filterDisplayName) {
+      throw new Error("applyAudioFilter requires filterDisplayName parameter");
+    }
+    
+    let successful = 0;
+    let failed = 0;
+    
+    for (const item of items) {
+      try {
+        const result = await applyAudioFilter(item, filterDisplayName);
+        if (result) successful++;
+        else failed++;
+      } catch (err) {
+        console.error(`Error applying audio filter to clip:`, err);
+        failed++;
+      }
+    }
+    
+    return { successful, failed };
+  },
+
+  /**
+   * Adjust volume of audio clip(s)
+   * Parameters: { volumeDb } - Volume in decibels (positive = louder, negative = quieter)
+   */
+  adjustVolume: async (trackItems, parameters = {}) => {
+    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const volumeDb = parameters.volumeDb || parameters.volume || 0;
+    
+    let successful = 0;
+    let failed = 0;
+    
+    for (const item of items) {
+      try {
+        const result = await adjustVolume(item, Number(volumeDb));
+        if (result) successful++;
+        else failed++;
+      } catch (err) {
+        console.error(`Error adjusting volume:`, err);
         failed++;
       }
     }

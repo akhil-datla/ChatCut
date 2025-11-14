@@ -411,7 +411,7 @@ export async function getSelectedMediaFilePaths(project, { includeSequence = fal
       }
     }
   } catch (err) {
-    log(`getSelectedMediaFilePaths error: ${err?.message || err}`, "red");
+    log(`getSelectedMediaFilePaths error: ${(err && err.message) || err}`, "red");
   }
   return Array.from(paths);
 }
