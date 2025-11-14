@@ -111,30 +111,17 @@ def get_available_actions() -> Dict[str, Dict[str, Any]]:
                 "blurAmount": {"type": "number", "default": 50, "description": "Blurriness amount (e.g., 0-500)"}
             }
         },
-        "modifyParameter": {
-            "description": "Modify effect parameter(s) on a clip after an effect has been applied",
+        "applyAudioFilter": {
+            "description": "Apply an audio effect/filter to an audio clip",
             "parameters": {
-                "parameterName": {"type": "string", "required": True, "description": "Name of the parameter to modify (e.g., 'Horizontal Blocks', 'Blurriness', 'Opacity')"},
-                "value": {"type": "number", "required": True, "description": "New value for the parameter"},
-                "componentName": {"type": "string", "default": None, "description": "Optional: Name of the effect/component containing the parameter"},
-                "excludeBuiltIn": {"type": "boolean", "default": True, "description": "Whether to exclude built-in effects like Motion/Opacity"},
-                "modifications": {"type": "array", "default": None, "description": "For batch modification: array of {parameterName, value, componentName?} objects"}
-            },
-            "examples": [
-                "Set mosaic blocks to 20",
-                "Change blur to 100",
-                "Make horizontal blocks 15",
-                "Set opacity to 50"
-            ]
+                "filterDisplayName": {"type": "string", "required": True, "description": "Display name of the audio filter (e.g., 'Parametric EQ', 'Reverb', 'DeNoise')"}
+            }
         },
-        "getParameters": {
-            "description": "Get list of all available effect parameters on the selected clip(s)",
-            "parameters": {},
-            "examples": [
-                "What parameters can I change?",
-                "Show me the effect settings",
-                "List available parameters"
-            ]
+        "adjustVolume": {
+            "description": "Adjust the volume of an audio clip",
+            "parameters": {
+                "volumeDb": {"type": "number", "required": True, "description": "Volume adjustment in decibels (positive = louder, negative = quieter, e.g., 3 = +3dB louder, -6 = -6dB quieter)"}
+            }
         }
     }
 
