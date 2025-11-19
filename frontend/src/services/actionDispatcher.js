@@ -13,9 +13,8 @@ import {
   applyFilter,
   applyTransition, 
   applyBlur,
-  modifyEffectParameter,
-  modifyEffectParametersBatch,
-  getEffectParameters
+  applyAudioFilter,
+  adjustVolume
 } from './editingActions.js';
 
 /**
@@ -125,7 +124,7 @@ const actionRegistry = {
 
   applyBlur: async (trackItems, parameters = {}) => {
     const items = Array.isArray(trackItems) ? trackItems : [trackItems];
-    const blurAmount = (parameters.blurAmount ?? parameters.blurriness ?? 5);
+    const blurAmount = (parameters.blurAmount || parameters.blurriness || 5);
     
     let successful = 0;
     let failed = 0;
@@ -145,93 +144,63 @@ const actionRegistry = {
   },
 
   /**
-   * Modify effect parameter(s) on clip(s)
-   * Parameters: { parameterName, value, componentName?, modifications? }
-   * 
-   * Single parameter: { parameterName: "Horizontal Blocks", value: 20 }
-   * Multiple parameters: { modifications: [{parameterName: "...", value: ...}, ...] }
+   * Apply audio filter/effect to audio clip(s)
+   * Parameters: { filterDisplayName }
    */
-  modifyParameter: async (trackItems, parameters = {}) => {
+  applyAudioFilter: async (trackItems, parameters = {}) => {
     const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const { filterDisplayName } = parameters;
     
-    // Check if this is a batch modification
-    if (parameters.modifications && Array.isArray(parameters.modifications)) {
-      // Batch modification mode
-      let successful = 0;
-      let failed = 0;
-      
-      for (const item of items) {
-        try {
-          const result = await modifyEffectParametersBatch(item, parameters.modifications);
-          successful += result.successful;
-          failed += result.failed;
-        } catch (err) {
-          console.error(`Error modifying parameters on clip:`, err);
-          failed += parameters.modifications.length;
-        }
-      }
-      
-      return { successful, failed };
-    } else {
-      // Single parameter modification
-      const { parameterName, value, componentName, excludeBuiltIn = true } = parameters;
-      
-      if (!parameterName) {
-        throw new Error("modifyParameter requires parameterName");
-      }
-      
-      if (value === undefined || value === null) {
-        throw new Error("modifyParameter requires value");
-      }
-      
-      let successful = 0;
-      let failed = 0;
-      
-      for (const item of items) {
-        try {
-          const result = await modifyEffectParameter(item, {
-            parameterName,
-            value,
-            componentName,
-            excludeBuiltIn
-          });
-          if (result) successful++;
-          else failed++;
-        } catch (err) {
-          console.error(`Error modifying parameter on clip:`, err);
-          failed++;
-        }
-      }
-      
-      return { successful, failed };
+    if (!filterDisplayName) {
+      throw new Error("applyAudioFilter requires filterDisplayName parameter");
     }
-  },
-
-  /**
-   * Get effect parameters from clip(s)
-   * No parameters required - just returns info about available parameters
-   */
-  getParameters: async (trackItems, parameters = {}) => {
-    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
-    const allParameters = [];
+    
+    let successful = 0;
+    let failed = 0;
     
     for (const item of items) {
       try {
-        const params = await getEffectParameters(item);
-        allParameters.push({
-          clipIndex: items.indexOf(item),
-          parameters: params
-        });
+        const result = await applyAudioFilter(item, filterDisplayName);
+        if (result) successful++;
+        else failed++;
       } catch (err) {
-        console.error(`Error getting parameters from clip:`, err);
+        console.error(`Error applying audio filter to clip:`, err);
+        failed++;
       }
     }
     
-    return { 
-      successful: allParameters.length, 
-      failed: items.length - allParameters.length,
-      data: allParameters
-    };
+    return { successful, failed };
+  },
+
+  /**
+   * Adjust volume of audio clip(s)
+   * Parameters: { volumeDb } - Volume in decibels (positive = louder, negative = quieter)
+   */
+  adjustVolume: async (trackItems, parameters = {}) => {
+    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const volumeDb = parameters.volumeDb || parameters.volume || 0;
+    
+    let successful = 0;
+    let failed = 0;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      try {
+        const result = await adjustVolume(item, Number(volumeDb));
+        if (result) {
+          successful++;
+          console.log(`[Dispatcher] Volume adjusted successfully on clip ${i + 1}/${items.length}`);
+        } else {
+          failed++;
+          console.warn(`[Dispatcher] Volume adjustment failed on clip ${i + 1}/${items.length} - no volume parameter found`);
+        }
+      } catch (err) {
+        console.error(`[Dispatcher] Error adjusting volume on clip ${i + 1}/${items.length}:`, err);
+        failed++;
+      }
+    }
+    
+    return { successful, failed };
   }
 }
 
@@ -278,38 +247,5 @@ export function getAvailableActions() {
  */
 export function hasAction(actionName) {
   return actionName in actionRegistry;
-}
-
-/**
- * Dispatch multiple actions sequentially.
- * actionsArray: [{ action: "applyFilter", parameters: {...} }, ...]
- * Returns aggregated results: { actions: [{action, result}], summary: {successful, failed} }
- */
-export async function dispatchActions(actionsArray, trackItems) {
-  if (!Array.isArray(actionsArray)) {
-    throw new Error('dispatchActions expects an array of actions');
-  }
-
-  const actionResults = [];
-  let summary = { successful: 0, failed: 0 };
-
-  for (const act of actionsArray) {
-    const name = act.action;
-    const params = act.parameters || {};
-    try {
-      const result = await dispatchAction(name, trackItems, params);
-      actionResults.push({ action: name, parameters: params, result });
-      summary.successful += (result.successful || 0);
-      summary.failed += (result.failed || 0);
-    } catch (err) {
-      console.error(`Error dispatching action ${name}:`, err);
-      actionResults.push({ action: name, parameters: params, error: String(err) });
-      // if unknown action, count as failed for each clip
-      const clipCount = Array.isArray(trackItems) ? trackItems.length : 1;
-      summary.failed += clipCount;
-    }
-  }
-
-  return { actions: actionResults, summary };
 }
 
