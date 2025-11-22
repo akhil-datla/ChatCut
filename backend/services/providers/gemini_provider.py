@@ -91,18 +91,6 @@ class GeminiProvider(AIProvider):
             # Parse JSON response
             result = json.loads(response_text)
 
-            # Check if multiple actions were returned
-            actions_list = result.get("actions")
-            if actions_list and isinstance(actions_list, list):
-                # Multi-action response
-                message = result.get("message", f"Extracted {len(actions_list)} actions")
-                confidence = 1.0
-                return AIProviderResult.success_multiple(
-                    actions=actions_list,
-                    message=message,
-                    confidence=confidence
-                ).to_dict()
-
             # Handle uncertainty with message-only guidance (no parameters)
             action = result.get("action")
             if not action:
@@ -117,7 +105,7 @@ class GeminiProvider(AIProvider):
                 msg = result.get("message") or "More details needed. Please specify the exact filter/transition or settings."
                 return AIProviderResult.failure(message=msg, error="NEEDS_SPECIFICATION").to_dict()
 
-            # Confident case (single action)
+            # Confident case
             parameters = result.get("parameters", {})
             message = result.get("message", "Action extracted successfully")
             confidence = 1.0
@@ -154,100 +142,34 @@ Available actions:
 - applyAudioFilter: Apply an audio effect/filter to an audio clip (parameters: filterDisplayName)
 - adjustVolume: Adjust volume of an audio clip (parameters: volumeDb)
 
-Parameters (zoom):
+Parameters:
 - endScale: Target zoom scale as percentage (default: 150 for zoomIn, 100 for zoomOut)
-  * Extract from: "zoom to X%", "zoom by X%", "X% zoom", "scale to X"
-  * If user says "zoom in" without number: use 150
-  * If user says "zoom out" without number: use 100
-- startScale: Starting zoom scale as percentage (default: 100 for zoomIn, 150 for zoomOut)
-  * Only extract when user specifies both start and end: "from X% to Y%", "X% to Y%"
-  * Otherwise, use the default (100 for zoomIn, 150 for zoomOut)
+- startScale: Starting zoom scale (default: 100 for zoomIn, 150 for zoomOut)
 - animated: Whether to animate the zoom over time (TRUE = gradual/animated, FALSE = static/instant)
-  * TRUE when: "slow", "gradual", "animate", "over time", "smooth", "from X to Y"
-  * FALSE when: "entire clip", "throughout", "static", or simple "zoom in/out X%" (default)
-- duration: Duration of the zoom animation in seconds (optional, uses entire clip duration if not specified)
-  * Extract from: "over 2 seconds", "for 3 seconds", "2 second zoom", "zoom for 1s"
-  * Only specify when user explicitly mentions duration
-  * Leave null/omit to use the full clip duration (most common)
-- startTime: Time offset from clip start in seconds (default: 0, starts at beginning of clip)
-  * Extract from: "start at 2 seconds", "begin zoom at 1.5s", "zoom starting at 3s"
-  * Only specify when user explicitly mentions start time
-  * Leave null/omit to start at the beginning of the clip (most common)
-- interpolation: Controls the animation curve between keyframes (default: 'BEZIER'):
-  * 'LINEAR' - Uniform rate of change, constant speed from start to end
-  * 'BEZIER' - Smooth, curved motion with gradual acceleration/deceleration (most natural)
-  * 'HOLD' - Instant change with no transition, sudden jump from one value to another
-  * 'EASE_IN' - Starts slow and accelerates toward the keyframe (decelerates entering)
-  * 'EASE_OUT' - Starts fast and decelerates away from the keyframe (accelerates leaving)
-
-Parameters (blur):
-- blurAmount: Blurriness amount (integer, typically 0-500, practical range 10-100)
-  * Extract from: "blur 30", "blur of 50", "blurriness 80"
-  * "slight blur" / "a little blurry" → 20-30
-  * "blur" / "blurry" (no amount) → 50 (default)
-  * "very blurry" / "heavy blur" → 80-100
-  * "extremely blurry" → 150+
-
-Parameters (filter):
-- filterName: Exact match name from the whitelist below (case-sensitive)
-
-Parameters (transition):
-- transitionName: Exact match name from the whitelist below (case-sensitive)
-- duration: Duration in seconds (default: 1.0), extract from user request
-- applyToStart: Apply to start of clip (true) or end (false) - default: true
-- transitionAlignment: Where transition is positioned (0.0=start edge, 0.5=center/default, 1.0=end edge)
+- duration: Duration in seconds (optional, uses clip duration if not specified)
+- interpolation: 'LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT' (default: 'BEZIER')
+- blurAmount: Blurriness amount (integer). If user says "make it more/less blurry", infer a reasonable value between 10 and 100; defaults to 50 if not specified.
 
 CRITICAL: Determining Animated vs Static Zoom
 
-CRITICAL: Understanding Video Editing Terms
-- "zoom in" / "punch in" / "dolly in" / "scale up" → zoomIn action (increase scale)
-- "zoom out" / "pull out" / "dolly out" / "scale down" → zoomOut action (decrease scale)
-- "ken burns effect" → gradual animated zoom (usually zoomIn with animated: true)
-- Scale percentages: 100% = original size, 150% = 1.5x larger, 200% = 2x larger, 50% = half size
-
 ANIMATED/Gradual Zoom (animated: true):
-- User explicitly requests motion/animation over time
-- Keywords: "slow zoom", "gradual", "animate", "from X to Y", "over time", "smooth", "ken burns"
-- Creates keyframes at start and end of clip (or specified duration) with different scale values
+- User mentions: "slow zoom", "gradual zoom", "animate", "zoom from X to Y", "zoom over time"
 - Examples:
-  - "slow zoom in from 100% to 120%" → {"action": "zoomIn", "parameters": {"animated": true, "startScale": 100, "endScale": 120, "interpolation": "BEZIER"}}
-  - "gradual zoom in to 150%" → {"action": "zoomIn", "parameters": {"animated": true, "endScale": 150, "interpolation": "BEZIER"}}
-  - "ken burns effect" → {"action": "zoomIn", "parameters": {"animated": true, "endScale": 120, "interpolation": "BEZIER"}}
-  - "zoom from 100 to 180 over 2 seconds" → {"action": "zoomIn", "parameters": {"animated": true, "startScale": 100, "endScale": 180, "duration": 2.0, "interpolation": "BEZIER"}}
+  - "slow zoom in from 100% to 120%" → {"animated": true, "startScale": 100, "endScale": 120}
+  - "gradual zoom in to 150%" → {"animated": true, "endScale": 150}
+  - "zoom in gradually" → {"animated": true}
+  - "animate a zoom from 100% to 120%" → {"animated": true, "startScale": 100, "endScale": 120}
 
 STATIC/Instant Zoom (animated: false):
-- User wants constant zoom level throughout the entire clip (no animation)
-- Keywords: "entire clip", "throughout", "static zoom", or simple "zoom to X%" (without motion words)
-- Creates two keyframes at same scale value (start and end of clip) = constant zoom
-- This is the DEFAULT behavior for simple zoom commands
+- User mentions: "entire clip", "throughout", "static", "zoom to X" (without "from" or "slow")
+- Simple requests without animation keywords default to static
 - Examples:
-  - "zoom in 120%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 120}} (DEFAULT: static)
-  - "entire clip zoomed in to 120%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 120}}
-  - "keep the whole clip at 150%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 150}}
-  - "zoom in to 120%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 120}}
+  - "zoom in 120%" → {"animated": false, "endScale": 120} (DEFAULT: static)
+  - "entire clip zoomed in to 120%" → {"animated": false, "endScale": 120}
+  - "zoom the whole clip to 150%" → {"animated": false, "endScale": 150}
+  - "zoom in to 120%" → {"animated": false, "endScale": 120}
 
-NUMBER EXTRACTION RULES:
-- Extract scale percentages: "120%", "150 percent", "1.5x", "double" (200%), "triple" (300%)
-- Extract "from X to Y" patterns to get both startScale and endScale
-- Extract duration values: "2 seconds", "1.5s", "half a second" (0.5), "3 sec"
-- If no number given for zoom: use sensible defaults (150% for zoomIn, 100% for zoomOut)
-- Convert multipliers: "2x" = 200%, "1.5x" = 150%, "half" = 50%
-
-INTERPOLATION MODE SELECTION:
-- User mentions "smooth" or "ease" → use 'BEZIER' (default for animated zooms)
-- User mentions "linear" or "constant speed" or "steady" → use 'LINEAR'
-- User mentions "ease in" or "slow start" or "start slow" → use 'EASE_IN'
-- User mentions "ease out" or "slow end" or "end slow" → use 'EASE_OUT'
-- User mentions "instant" or "sudden" or "snap" → use 'HOLD'
-- No mention → use 'BEZIER' for animated, omit for static (animated: false)
-- Note: interpolation only matters when animated: true
-
-Examples with interpolation:
-- "zoom in smoothly to 150%" → {"action": "zoomIn", "parameters": {"animated": true, "endScale": 150, "interpolation": "BEZIER"}}
-- "zoom in with constant speed" → {"action": "zoomIn", "parameters": {"animated": true, "interpolation": "LINEAR"}}
-- "ease into a zoom" → {"action": "zoomIn", "parameters": {"animated": true, "interpolation": "EASE_IN"}}
-- "zoom in and ease out" → {"action": "zoomIn", "parameters": {"animated": true, "interpolation": "EASE_OUT"}}
-- "zoom in steady from 100 to 150" → {"action": "zoomIn", "parameters": {"animated": true, "startScale": 100, "endScale": 150, "interpolation": "LINEAR"}}
+Extract numbers from user requests. Extract "from X to Y" to get both startScale and endScale.
 
 FILTER SELECTION (CRITICAL when user asks for a "filter" or an effect by name or description):
 - You MUST choose the filterName from this exact whitelist of Premiere/AE match names. If you cannot confidently choose one, return a ranked candidate list instead of guessing.
@@ -481,43 +403,22 @@ When a user requests a transition:
     {"action": null, "message": "Natural language response of best-matching transitions based on user description."}
 Do NOT invent names outside the whitelist.
 
-ZOOM examples (comprehensive):
-Static (constant zoom level):
-- "zoom in by 120%" → {"action": "zoomIn", "parameters": {"endScale": 120, "animated": false}}
-- "entire clip zoomed in to 120%" → {"action": "zoomIn", "parameters": {"endScale": 120, "animated": false}}
-- "zoom in" → {"action": "zoomIn", "parameters": {"animated": false}} (uses default 150%)
-- "punch in 2x" → {"action": "zoomIn", "parameters": {"endScale": 200, "animated": false}}
-
-Animated (gradual zoom):
-- "slow zoom in from 100% to 120%" → {"action": "zoomIn", "parameters": {"startScale": 100, "endScale": 120, "animated": true, "interpolation": "BEZIER"}}
-- "gradual zoom in to 150%" → {"action": "zoomIn", "parameters": {"endScale": 150, "animated": true, "interpolation": "BEZIER"}}
-- "zoom out gradually" → {"action": "zoomOut", "parameters": {"animated": true, "interpolation": "BEZIER"}}
-- "smooth zoom from 100 to 180 over 3 seconds" → {"action": "zoomIn", "parameters": {"startScale": 100, "endScale": 180, "duration": 3.0, "animated": true, "interpolation": "BEZIER"}}
-- "ken burns effect" → {"action": "zoomIn", "parameters": {"endScale": 120, "animated": true, "interpolation": "BEZIER"}}
-
-With specific interpolation:
-- "zoom in with ease in" → {"action": "zoomIn", "parameters": {"animated": true, "interpolation": "EASE_IN"}}
-- "linear zoom to 130%" → {"action": "zoomIn", "parameters": {"endScale": 130, "animated": true, "interpolation": "LINEAR"}}
-- "zoom starting slow to 140%" → {"action": "zoomIn", "parameters": {"endScale": 140, "animated": true, "interpolation": "EASE_IN"}}
-
-With timing:
-- "zoom in starting at 2 seconds" → {"action": "zoomIn", "parameters": {"startTime": 2.0, "animated": false}}
-- "zoom from 100 to 150 for 2 seconds starting at 1 second" → {"action": "zoomIn", "parameters": {"startScale": 100, "endScale": 150, "duration": 2.0, "startTime": 1.0, "animated": true, "interpolation": "BEZIER"}}
+Examples:
+- "zoom in by 120%" → {"action": "zoomIn", "animated": false, "endScale": 120}
+- "slow zoom in from 100% to 120%" → {"action": "zoomIn", "animated": true, "startScale": 100, "endScale": 120}
+- "entire clip zoomed in to 120%" → {"action": "zoomIn", "animated": false, "endScale": 120}
+- "gradual zoom in to 150%" → {"action": "zoomIn", "animated": true, "endScale": 150}
+- "zoom out gradually" → {"action": "zoomOut", "animated": true}
 TRANSITION examples:
-- "cross dissolve" → {"action": "applyTransition", "parameters": {"transitionName": "AE.ADBE Cross Dissolve New", "duration": 1.0}}
+- "cross dissolve" → {"action": "applyTransition", "parameters": {"transitionName": "AE.ADBE Cross Dissolve New"}}
 - "dip to black for half a second" → {"action": "applyTransition", "parameters": {"transitionName": "AE.ADBE Dip To Black", "duration": 0.5}}
-- "add a 2 second dissolve at the end" → {"action": "applyTransition", "parameters": {"transitionName": "AE.ADBE Cross Dissolve New", "duration": 2.0, "applyToStart": false}}
-- "some crazy glitchy transition" → {"action": null, "message": "Multiple matching transitions: AE.AE_Impact_Glitch, AE.AE_Impact_Flicker, AE.AE_Impact_VHS_Damage. Which would you like?"}
-
+- "some crazy glitchy transition" → {"action": null, "message": "Multiple matching transitions: AE.AE_Impact_Glitch, AE.AE_Impact_Flicker, AE.AE_Impact_Roll. Please specify one."}
 FILTER examples:
 - "make it black and white" → {"action": "applyFilter", "parameters": {"filterName": "AE.ADBE Black & White"}}
 - "add a vignette" → {"action": "applyFilter", "parameters": {"filterName": "AE.Impact_Vignette_FX"}}
 - "add gaussian blur" → {"action": "applyFilter", "parameters": {"filterName": "AE.ADBE Gaussian Blur 2"}}
-- "some glow effect" → {"action": null, "message": "Multiple matching filters found: AE.ADBE Alpha Glow (basic glow), AE.Impact_Edge_Glow_FX (edge glow), AE.Impact_Wonder_Glow_FX (stylized glow). Which would you like?"}
-
-BLUR examples (use applyBlur action, NOT applyFilter):
+- "some glow effect" → {"action": null, "message": "Multiple matching filters: AE.ADBE Alpha Glow, AE.Impact_Edge_Glow_FX, AE.Impact_Wonder_Glow_FX. Please specify one."}
 - "add blur 30" → {"action": "applyBlur", "parameters": {"blurAmount": 30}}
-- "blur it" → {"action": "applyBlur", "parameters": {"blurAmount": 50}}
 - "make it a little blurry" → {"action": "applyBlur", "parameters": {"blurAmount": 25}}
 - "increase blurriness to 80" → {"action": "applyBlur", "parameters": {"blurAmount": 80}}
 - "heavy blur" → {"action": "applyBlur", "parameters": {"blurAmount": 100}}
@@ -572,31 +473,11 @@ AUDIO EFFECT examples:
 - "add noise reduction" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "DeNoise"}}
 
 Return ONLY valid JSON in this format:
-
-SINGLE ACTION (for prompts with one edit):
 {
     "action": "actionName",
     "parameters": {...},
     "message": "Brief explanation"
 }
-
-MULTIPLE ACTIONS (for prompts with multiple edits like "set blocks to 20 and add blur"):
-{
-    "actions": [
-        {"action": "actionName1", "parameters": {...}},
-        {"action": "actionName2", "parameters": {...}}
-    ],
-    "message": "Brief explanation of all actions"
-}
-
-Rules:
-- If user requests 1 edit: return {"action": "...", "parameters": {...}}
-- If user requests 2+ edits: return {"actions": [{action, parameters}, ...]}
-- Use "and", commas, semicolons, "then", etc. to detect multiple edits
-- Examples of multi-action prompts:
-  * "set horizontal blocks to 20 and add blur 40" → actions: [modifyParameter, applyBlur]
-  * "zoom in by 120% and apply black and white filter" → actions: [zoomIn, applyFilter]
-  * "blur it then set vertical blocks to 10" → actions: [applyBlur, modifyParameter]
 
 If the request is unclear or not a video editing action, return:
 {
@@ -604,6 +485,7 @@ If the request is unclear or not a video editing action, return:
     "parameters": {},
     "message": "I don't understand this request."
 }
+
 
 SMALL TALK (greetings/chit-chat):
 - If the user greets or engages in small talk (e.g., "hello", "hi", "hey", "good morning", "good evening", "thank you", "thanks"), do NOT invent an edit action.

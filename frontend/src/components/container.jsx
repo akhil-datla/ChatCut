@@ -2,9 +2,9 @@ import React, { useState, useRef } from "react";
 import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
-import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
+import { dispatchAction } from "../services/actionDispatcher";
 import { processPrompt, processMedia } from "../services/backendClient";
-import { getSelectedMediaFilePaths, replaceClipMedia } from "../services/clipUtils";
+import { getSelectedMediaFilePaths } from "../services/clipUtils";
 
 const ppro = require("premierepro");
 
@@ -17,7 +17,7 @@ export const Container = () => {
   const replyIndexRef = useRef(0);
   
   // Toggle for process media mode (send file paths to AI)
-  const [processMediaMode, setProcessMediaMode] = useState(false);
+  const [processMediaMode, setProcessMediaMode] = useState(true);
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -190,79 +190,35 @@ export const Container = () => {
       }
       
       writeToConsole(`Found ${trackItems.length} selected clip(s)`);
-      writeToConsole(`🤖 Sending to AI: "${text}"`);
       
-      // Determine which backend call to use based on processMediaMode
-      let aiResponse;
-      if (processMediaMode) {
-        const duration = await trackItems[0].getDuration();
-        console.log("Clip duration (seconds):", duration.seconds);
-        if (duration.seconds > 5){
-          writeToConsole("❌ Clip too long for generative AI processing. Please trim clip to 5 seconds or less.");
-          return;
-        }
-        const filePaths = await getSelectedMediaFilePaths(project);
+      // Use precomputed AI response if available, otherwise process the prompt
+      let aiResponse = precomputedAiResponse;
+      
+      if (!aiResponse) {
+        writeToConsole(`🤖 Sending to AI: "${text}"`);
         
-        if (filePaths.length === 0) {
-          writeToConsole("❌ No media files selected. Please select a clip.");
-          return;
-        }
-        
-        if (filePaths.length > 1) {
-          writeToConsole("⚠️ Multiple clips selected. Processing first clip only.");
-        }
-        
-        const filePath = filePaths[0];
-        writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
-        aiResponse = await processMedia(filePath, text);
-        
-        // If we got a processed video back, replace it in the timeline
-        if (aiResponse.output_path && aiResponse.original_path) {
-          writeToConsole("🎬 Replacing clip with processed video...");
-          
-          // Find the track item that uses this original media
-          for (const trackItem of trackItems) {
-            try {
-              const projectItem = await trackItem.getProjectItem();
-              const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
-              if (clipProjectItem) {
-                const mediaPath = await clipProjectItem.getMediaFilePath();
-                if (mediaPath === aiResponse.original_path) {
-                  const success = await replaceClipMedia(trackItem, aiResponse.output_path);
-                  if (success) {
-                    writeToConsole(`✅ Replaced clip with processed video!`);
-                  } else {
-                    writeToConsole(`⚠️ Failed to replace clip`);
-                  }
-                  break; // Only replace first matching clip
-                }
-              }
-            } catch (err) {
-              console.error("Error replacing clip:", err);
-            }
-          }
+        // Determine which backend call to use based on processMediaMode
+        if (processMediaMode) {
+          // Get file paths from selected clips
+          const filePaths = await getSelectedMediaFilePaths(project);
+          writeToConsole(`Sending ${filePaths.length} media file path(s) to Backend`);
+          aiResponse = await processMedia(filePaths, text);
+        } else {
+          // Standard prompt-only processing
+          aiResponse = await processPrompt(text);
         }
       } else {
-        // Standard prompt-only processing
-        aiResponse = await processPrompt(text);
+        writeToConsole(`🤖 Using precomputed AI response`);
       }
       
       // Log AI response for debugging
       console.log("[Edit] AI Response:", aiResponse);
       
       // Show AI confirmation
-      // Support single-action responses (legacy) and multi-action responses (new)
       if (aiResponse.action) {
         writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
         if (aiResponse.message) {
           writeToConsole(`💬 AI message: ${aiResponse.message}`);
-        }
-      } else if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
-        writeToConsole(`✨ AI extracted ${aiResponse.actions.length} actions`);
-        if (aiResponse.message) writeToConsole(`💬 AI message: ${aiResponse.message}`);
-        for (let i = 0; i < aiResponse.actions.length; i++) {
-          const a = aiResponse.actions[i];
-          writeToConsole(`  • ${a.action} ${JSON.stringify(a.parameters || {})}`);
         }
       } else {
         // Handle special non-action responses
@@ -283,30 +239,21 @@ export const Container = () => {
         return;
       }
       
-      // Dispatch the action(s) with extracted parameters
-      let dispatchResult;
-      if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
-        // Multiple actions
-        dispatchResult = await dispatchActions(aiResponse.actions, trackItems);
-        const { summary } = dispatchResult;
-        if (summary.successful > 0) {
-          writeToConsole(`✅ Actions applied successfully to ${summary.successful} clip(s)!`);
-          if (summary.failed > 0) writeToConsole(`⚠️ Failed on ${summary.failed} clip(s)`);
-        } else {
-          writeToConsole(`❌ Failed to apply actions. Check console for errors.`);
+      // Dispatch the action with extracted parameters
+      const result = await dispatchAction(
+        aiResponse.action,
+        trackItems,
+        aiResponse.parameters || {}
+      );
+      
+      // Report results
+      if (result.successful > 0) {
+        writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
+        if (result.failed > 0) {
+          writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
         }
       } else {
-        // Single-action (legacy)
-        dispatchResult = await dispatchAction(aiResponse.action, trackItems, aiResponse.parameters || {});
-        const result = dispatchResult;
-        if (result.successful > 0) {
-          writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
-          if (result.failed > 0) {
-            writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
-          }
-        } else {
-          writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
-        }
+        writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
       }
       
     } catch (err) {
