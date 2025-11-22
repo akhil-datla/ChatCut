@@ -151,6 +151,8 @@ Available actions:
 - applyBlur: Apply Gaussian blur (parameters: blurAmount)
 - modifyParameter: Modify effect parameter after effect is applied (parameters: parameterName, value, componentName)
 - getParameters: List all available parameters on selected clip (no parameters required)
+- applyAudioFilter: Apply an audio effect/filter to an audio clip (parameters: filterDisplayName)
+- adjustVolume: Adjust volume of an audio clip (parameters: volumeDb)
 
 Parameters (zoom):
 - endScale: Target zoom scale as percentage (default: 150 for zoomIn, 100 for zoomOut)
@@ -560,6 +562,14 @@ PARAMETER OMISSION RULES:
 - Omit startTime unless user specifies start point ("starting at 1s", "begin at 2 seconds")
 - Omit interpolation when animated is false (static zoom doesn't need it)
 - Always include: action, endScale (for zoom), animated (for zoom)
+AUDIO EFFECT examples:
+- "adjust volume by 3 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
+- "make it louder by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 6}}
+- "reduce volume by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}}
+- "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+- "add reverb" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Reverb"}}
+- "apply parametric eq" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Parametric EQ"}}
+- "add noise reduction" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "DeNoise"}}
 
 Return ONLY valid JSON in this format:
 

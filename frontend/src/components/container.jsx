@@ -50,56 +50,123 @@ export const Container = () => {
       
       // Get active project
       const project = await ppro.Project.getActiveProject();
-      const sequence = await project.getActiveSequence();
-      const selection = await sequence.getSelection();
-      
-      // Get only video track items (Motion effect only works on video clips)
-      const trackItems = await selection.getTrackItems(
-        ppro.Constants.TrackItemType.CLIP, 
-        false  // false means only video clips
-      );
-      
-      // Filter to video clips only if needed
-      const videoTrackItems = [];
-      for (let i = 0; i < trackItems.length; i++) {
-        try {
-          const clip = trackItems[i];
-          const componentChain = await clip.getComponentChain();
-          const componentCount = await componentChain.getComponentCount();
-          
-          // Check if clip has video components (Motion, Transform, etc.)
-          let hasVideo = false;
-          for (let j = 0; j < componentCount; j++) {
-            try {
-              const component = await componentChain.getComponentAtIndex(j);
-              const matchName = await component.getMatchName();
-              if (matchName.includes("Motion") || matchName.includes("ADBE") || matchName.includes("Video")) {
-                hasVideo = true;
-                break;
-              }
-            } catch (err) {
-              // Continue checking
-            }
-          }
-          
-          if (hasVideo) {
-            videoTrackItems.push(clip);
-          }
-        } catch (err) {
-          // Skip this clip
-        }
-      }
-      
-      if (videoTrackItems.length === 0) {
-        writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
+      if (!project) {
+        writeToConsole("❌ No active project. Please open a project in Premiere Pro.");
         return;
       }
       
-      console.log("Select Clips with prompt:", { trackItems: videoTrackItems, text });
-      // Send prompt and trackitems to backend
-      // Axios or fetch logic would go here
-
-      editClips(ppro, project, videoTrackItems, text);
+      const sequence = await project.getActiveSequence();
+      if (!sequence) {
+        writeToConsole("❌ No active sequence. Please open a sequence in Premiere Pro.");
+        return;
+      }
+      
+      const selection = await sequence.getSelection();
+      if (!selection) {
+        writeToConsole("❌ Could not get selection. Please select clips on the timeline.");
+        return;
+      }
+      
+      // First, check what type of action this might be by processing the prompt
+      // This helps us determine if we need video or audio clips
+      let aiResponse;
+      try {
+        aiResponse = await processPrompt(text);
+        console.log("[SelectClips] AI preview:", aiResponse);
+      } catch (err) {
+        // If AI fails, default to video clips
+        console.warn("[SelectClips] Could not preview AI response, defaulting to video clips");
+      }
+      
+      const actionType = aiResponse && aiResponse.action;
+      const isAudioAction = actionType === 'adjustVolume' || actionType === 'applyAudioFilter';
+      
+      if (isAudioAction) {
+        // Get audio track items
+        const trackItems = await selection.getTrackItems(
+          ppro.Constants.TrackItemType.CLIP, 
+          true  // true means include all clip types (we'll filter for audio)
+        );
+        
+        // Filter to audio clips only
+        const audioTrackItems = [];
+        for (let i = 0; i < trackItems.length; i++) {
+          try {
+            const clip = trackItems[i];
+            // Try to get audio component chain - if it works, it's an audio clip
+            try {
+              const audioComponentChain = await clip.getComponentChain();
+              // Check if it's an audio clip by trying to get audio-specific properties
+              const mediaType = await clip.getMediaType();
+              // If we can get component chain without error, it might be audio
+              // More reliable: check if clip is on an audio track
+              const trackIndex = await clip.getTrackIndex();
+              const audioTrackCount = await sequence.getAudioTrackCount();
+              
+              if (trackIndex < audioTrackCount) {
+                audioTrackItems.push(clip);
+              }
+            } catch (err) {
+              // Not an audio clip, skip
+            }
+          } catch (err) {
+            // Skip this clip
+          }
+        }
+        
+        if (audioTrackItems.length === 0) {
+          writeToConsole("❌ No audio clips selected. Please select audio clips on audio tracks.");
+          return;
+        }
+        
+        console.log("Select Audio Clips with prompt:", { trackItems: audioTrackItems, text });
+        editClips(ppro, project, audioTrackItems, text, aiResponse);
+      } else {
+        // Get video track items (default behavior)
+        const trackItems = await selection.getTrackItems(
+          ppro.Constants.TrackItemType.CLIP, 
+          false  // false means only video clips
+        );
+        
+        // Filter to video clips only if needed
+        const videoTrackItems = [];
+        for (let i = 0; i < trackItems.length; i++) {
+          try {
+            const clip = trackItems[i];
+            const componentChain = await clip.getComponentChain();
+            const componentCount = await componentChain.getComponentCount();
+            
+            // Check if clip has video components (Motion, Transform, etc.)
+            let hasVideo = false;
+            for (let j = 0; j < componentCount; j++) {
+              try {
+                const component = await componentChain.getComponentAtIndex(j);
+                const matchName = await component.getMatchName();
+                if (matchName.includes("Motion") || matchName.includes("ADBE") || matchName.includes("Video")) {
+                  hasVideo = true;
+                  break;
+                }
+              } catch (err) {
+                // Continue checking
+              }
+            }
+            
+            if (hasVideo) {
+              videoTrackItems.push(clip);
+            }
+          } catch (err) {
+            // Skip this clip
+          }
+        }
+        
+        if (videoTrackItems.length === 0) {
+          writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
+          return;
+        }
+        
+        console.log("Select Video Clips with prompt:", { trackItems: videoTrackItems, text });
+        editClips(ppro, project, videoTrackItems, text, aiResponse);
+      }
 
 
 
@@ -113,7 +180,7 @@ export const Container = () => {
     }
   }
 
-  async function editClips(ppro, project, trackItems, text) {
+  async function editClips(ppro, project, trackItems, text, precomputedAiResponse = null) {
     try {
       // Check if we have selected clips
       if (!trackItems || trackItems.length === 0) {
@@ -123,61 +190,68 @@ export const Container = () => {
       }
       
       writeToConsole(`Found ${trackItems.length} selected clip(s)`);
-      writeToConsole(`🤖 Sending to AI: "${text}"`);
       
-      // Determine which backend call to use based on processMediaMode
-      let aiResponse;
-      if (processMediaMode) {
-        const duration = await trackItems[0].getDuration();
-        console.log("Clip duration (seconds):", duration.seconds);
-        if (duration.seconds > 5){
-          writeToConsole("❌ Clip too long for generative AI processing. Please trim clip to 5 seconds or less.");
-          return;
-        }
-        const filePaths = await getSelectedMediaFilePaths(project);
+      // Use precomputed AI response if available, otherwise process the prompt
+      let aiResponse = precomputedAiResponse;
+      
+      if (!aiResponse) {
+        writeToConsole(`🤖 Sending to AI: "${text}"`);
         
-        if (filePaths.length === 0) {
-          writeToConsole("❌ No media files selected. Please select a clip.");
-          return;
-        }
-        
-        if (filePaths.length > 1) {
-          writeToConsole("⚠️ Multiple clips selected. Processing first clip only.");
-        }
-        
-        const filePath = filePaths[0];
-        writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
-        aiResponse = await processMedia(filePath, text);
-        
-        // If we got a processed video back, replace it in the timeline
-        if (aiResponse.output_path && aiResponse.original_path) {
-          writeToConsole("🎬 Replacing clip with processed video...");
+        // Determine which backend call to use based on processMediaMode
+        if (processMediaMode) {
+          const duration = await trackItems[0].getDuration();
+          console.log("Clip duration (seconds):", duration.seconds);
+          if (duration.seconds > 5){
+            writeToConsole("❌ Clip too long for generative AI processing. Please trim clip to 5 seconds or less.");
+            return;
+          }
+          const filePaths = await getSelectedMediaFilePaths(project);
           
-          // Find the track item that uses this original media
-          for (const trackItem of trackItems) {
-            try {
-              const projectItem = await trackItem.getProjectItem();
-              const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
-              if (clipProjectItem) {
-                const mediaPath = await clipProjectItem.getMediaFilePath();
-                if (mediaPath === aiResponse.original_path) {
-                  const success = await replaceClipMedia(trackItem, aiResponse.output_path);
-                  if (success) {
-                    writeToConsole(`✅ Replaced clip with processed video!`);
-                  } else {
-                    writeToConsole(`⚠️ Failed to replace clip`);
+          if (filePaths.length === 0) {
+            writeToConsole("❌ No media files selected. Please select a clip.");
+            return;
+          }
+          
+          if (filePaths.length > 1) {
+            writeToConsole("⚠️ Multiple clips selected. Processing first clip only.");
+          }
+          
+          const filePath = filePaths[0];
+          writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
+          aiResponse = await processMedia(filePath, text);
+          
+          // If we got a processed video back, replace it in the timeline
+          if (aiResponse.output_path && aiResponse.original_path) {
+            writeToConsole("🎬 Replacing clip with processed video...");
+            
+            // Find the track item that uses this original media
+            for (const trackItem of trackItems) {
+              try {
+                const projectItem = await trackItem.getProjectItem();
+                const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+                if (clipProjectItem) {
+                  const mediaPath = await clipProjectItem.getMediaFilePath();
+                  if (mediaPath === aiResponse.original_path) {
+                    const success = await replaceClipMedia(trackItem, aiResponse.output_path);
+                    if (success) {
+                      writeToConsole(`✅ Replaced clip with processed video!`);
+                    } else {
+                      writeToConsole(`⚠️ Failed to replace clip`);
+                    }
+                    break; // Only replace first matching clip
                   }
-                  break; // Only replace first matching clip
                 }
+              } catch (err) {
+                console.error("Error replacing clip:", err);
               }
-            } catch (err) {
-              console.error("Error replacing clip:", err);
             }
           }
+        } else {
+          // Standard prompt-only processing
+          aiResponse = await processPrompt(text);
         }
       } else {
-        // Standard prompt-only processing
-        aiResponse = await processPrompt(text);
+        writeToConsole(`🤖 Using precomputed AI response`);
       }
       
       // Log AI response for debugging

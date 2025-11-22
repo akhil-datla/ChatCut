@@ -135,6 +135,18 @@ def get_available_actions() -> Dict[str, Dict[str, Any]]:
                 "Show me the effect settings",
                 "List available parameters"
             ]
+        },
+        "applyAudioFilter": {
+            "description": "Apply an audio effect/filter to an audio clip",
+            "parameters": {
+                "filterDisplayName": {"type": "string", "required": True, "description": "Display name of the audio filter (e.g., 'Parametric EQ', 'Reverb', 'DeNoise')"}
+            }
+        },
+        "adjustVolume": {
+            "description": "Adjust the volume of an audio clip",
+            "parameters": {
+                "volumeDb": {"type": "number", "required": True, "description": "Volume adjustment in decibels (positive = louder, negative = quieter, e.g., 3 = +3dB louder, -6 = -6dB quieter)"}
+            }
         }
     }
 
