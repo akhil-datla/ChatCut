@@ -15,7 +15,9 @@ import {
   applyBlur,
   modifyEffectParameter,
   modifyEffectParametersBatch,
-  getEffectParameters
+  getEffectParameters,
+  applyAudioFilter,
+  adjustVolume
 } from './editingActions.js';
 
 /**
@@ -125,7 +127,7 @@ const actionRegistry = {
 
   applyBlur: async (trackItems, parameters = {}) => {
     const items = Array.isArray(trackItems) ? trackItems : [trackItems];
-    const blurAmount = (parameters.blurAmount ?? parameters.blurriness ?? 5);
+    const blurAmount = (parameters.blurAmount || parameters.blurriness || 5);
     
     let successful = 0;
     let failed = 0;
@@ -232,6 +234,66 @@ const actionRegistry = {
       failed: items.length - allParameters.length,
       data: allParameters
     };
+  },
+
+  /**
+   * Apply audio filter/effect to audio clip(s)
+   * Parameters: { filterDisplayName }
+   */
+  applyAudioFilter: async (trackItems, parameters = {}) => {
+    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const { filterDisplayName } = parameters;
+    
+    if (!filterDisplayName) {
+      throw new Error("applyAudioFilter requires filterDisplayName parameter");
+    }
+    
+    let successful = 0;
+    let failed = 0;
+    
+    for (const item of items) {
+      try {
+        const result = await applyAudioFilter(item, filterDisplayName);
+        if (result) successful++;
+        else failed++;
+      } catch (err) {
+        console.error(`Error applying audio filter to clip:`, err);
+        failed++;
+      }
+    }
+    
+    return { successful, failed };
+  },
+
+  /**
+   * Adjust volume of audio clip(s)
+   * Parameters: { volumeDb } - Volume in decibels (positive = louder, negative = quieter)
+   */
+  adjustVolume: async (trackItems, parameters = {}) => {
+    const items = Array.isArray(trackItems) ? trackItems : [trackItems];
+    const volumeDb = parameters.volumeDb || parameters.volume || 0;
+    
+    let successful = 0;
+    let failed = 0;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      try {
+        const result = await adjustVolume(item, Number(volumeDb));
+        if (result) {
+          successful++;
+          console.log(`[Dispatcher] Volume adjusted successfully on clip ${i + 1}/${items.length}`);
+        } else {
+          failed++;
+          console.warn(`[Dispatcher] Volume adjustment failed on clip ${i + 1}/${items.length} - no volume parameter found`);
+        }
+      } catch (err) {
+        console.error(`[Dispatcher] Error adjusting volume on clip ${i + 1}/${items.length}:`, err);
+        failed++;
+      }
+    }
+    
+    return { successful, failed };
   }
 }
 
