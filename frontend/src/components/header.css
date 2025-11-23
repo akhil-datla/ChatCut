@@ -1,4 +1,7 @@
 .plugin-header {
-  color: var(--uxp-host-text-color-secondary, white);
   width: 100%;
+  height: 1px; /* Minimal height if needed, or 0 to hide completely but keep component */
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
 }

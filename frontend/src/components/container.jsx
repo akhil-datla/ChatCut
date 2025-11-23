@@ -3,6 +3,7 @@ import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
 import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
+import { getEffectParameters } from "../services/editingActions";
 import { processPrompt, processMedia } from "../services/backendClient";
 import { getSelectedMediaFilePaths, replaceClipMedia } from "../services/clipUtils";
 
@@ -38,14 +39,64 @@ export const Container = () => {
 
   
 
-  const onSend = (text) => {
+  const onSend = (text, contextParams = null) => {
     if (!text || !text.trim()) return;
     const userMsg = { id: `u-${Date.now()}`, sender: "user", text: text.trim() };
     addMessage(userMsg);
-    selectClips(text);
+    selectClips(text, contextParams);
   };
 
-  async function selectClips(text) {
+  const fetchAvailableEffects = async () => {
+    try {
+      const project = await ppro.Project.getActiveProject();
+      if (!project) return [];
+      const sequence = await project.getActiveSequence();
+      if (!sequence) return [];
+      const selection = await sequence.getSelection();
+      if (!selection) return [];
+      const trackItems = await selection.getTrackItems();
+      if (!trackItems || trackItems.length === 0) return [];
+
+      // Use first clip for context
+      const item = trackItems[0];
+      const params = await getEffectParameters(item);
+      
+      const results = [];
+      for (const p of params) {
+        let value = null;
+        try {
+          // Try simple get value
+          value = await p.param.getValue();
+        } catch (e) {
+          // If fails, try getting value at time 0
+          try {
+            const time = await ppro.TickTime.createWithSeconds(0);
+            value = await p.param.getValueAtTime(time);
+          } catch (e2) {
+            value = "unknown";
+          }
+        }
+        
+        // Handle Keyframe objects
+        if (value && typeof value === 'object' && typeof value.getValue === 'function') {
+          value = await value.getValue();
+        }
+        
+        results.push({
+          component: p.componentDisplayName,
+          parameter: p.paramDisplayName,
+          value: value,
+          id: `${p.componentDisplayName}::${p.paramDisplayName}`
+        });
+      }
+      return results;
+    } catch (err) {
+      console.error("Error fetching effects:", err);
+      return [];
+    }
+  };
+
+  async function selectClips(text, contextParams = null) {
     try {
       
       // Get active project
@@ -120,7 +171,7 @@ export const Container = () => {
         }
         
         console.log("Select Audio Clips with prompt:", { trackItems: audioTrackItems, text });
-        editClips(ppro, project, audioTrackItems, text, aiResponse);
+        editClips(ppro, project, audioTrackItems, text, aiResponse, contextParams);
       } else {
         // Get video track items (default behavior)
         const trackItems = await selection.getTrackItems(
@@ -165,7 +216,7 @@ export const Container = () => {
         }
         
         console.log("Select Video Clips with prompt:", { trackItems: videoTrackItems, text });
-        editClips(ppro, project, videoTrackItems, text, aiResponse);
+        editClips(ppro, project, videoTrackItems, text, aiResponse, contextParams);
       }
 
 
@@ -180,7 +231,7 @@ export const Container = () => {
     }
   }
 
-  async function editClips(ppro, project, trackItems, text, precomputedAiResponse = null) {
+  async function editClips(ppro, project, trackItems, text, precomputedAiResponse = null, contextParams = null) {
     try {
       // Check if we have selected clips
       if (!trackItems || trackItems.length === 0) {
@@ -196,6 +247,9 @@ export const Container = () => {
       
       if (!aiResponse) {
         writeToConsole(`🤖 Sending to AI: "${text}"`);
+        if (contextParams) {
+          writeToConsole(`📋 With context: ${Object.keys(contextParams).length} parameters`);
+        }
         
         // Determine which backend call to use based on processMediaMode
         if (processMediaMode) {
@@ -248,7 +302,7 @@ export const Container = () => {
           }
         } else {
           // Standard prompt-only processing
-          aiResponse = await processPrompt(text);
+          aiResponse = await processPrompt(text, contextParams);
         }
       } else {
         writeToConsole(`🤖 Using precomputed AI response`);
@@ -342,13 +396,15 @@ export const Container = () => {
           onSend={onSend}
           processMediaMode={processMediaMode}
           setProcessMediaMode={setProcessMediaMode}
+          fetchAvailableEffects={fetchAvailableEffects}
         />
       </div>
       <style>
         {`
     .plugin-container {
-      color: white;
-      padding: 8px 12px;
+      background-color: var(--color-bg-dark);
+      color: var(--color-text-offwhite);
+      padding: 0; /* edge-to-edge */
       display: flex;
       flex-direction: column;
       height: 100%;

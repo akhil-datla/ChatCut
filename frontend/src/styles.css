@@ -1,3 +1,32 @@
+:root {
+  --color-bg-dark: #1e1e1e;
+  --color-text-offwhite: #f0f0f0;
+  --color-border-light: #444444;
+  --color-accent-blue: #0078d4;
+  --color-bubble-user-bg: rgba(0,120,255,0.18);
+  --color-bubble-user-text: #d6f0ff;
+  --color-bubble-bot-bg: #2d2d2d;
+  --color-bubble-bot-text: #f0f0f0;
+}
+
+body {
+  background-color: var(--color-bg-dark);
+  color: var(--color-text-offwhite);
+  margin: 0;
+  padding: 0;
+  font-family: "Adobe Clean", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden; /* Hide body scrollbar */
+}
+
+/* Hide scrollbars for all elements but keep functionality */
+*::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
 .tabbar {
   display: flex;
   flex: 0 0 auto;

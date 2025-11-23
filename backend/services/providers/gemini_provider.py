@@ -49,7 +49,7 @@ class GeminiProvider(AIProvider):
         """Get provider name"""
         return "gemini"
     
-    def process_prompt(self, user_prompt: str) -> Dict[str, Any]:
+    def process_prompt(self, user_prompt: str, context_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Process user prompt using Gemini API
         """
@@ -75,8 +75,14 @@ class GeminiProvider(AIProvider):
             # Create system prompt
             system_prompt = self._get_system_prompt()
             
+            # Format context if available
+            context_str = ""
+            if context_params:
+                context_str = f"\nCONTEXT: User has selected effect parameters:\n{json.dumps(context_params, indent=2)}\n"
+                context_str += "Use this context to understand the current state (e.g. 'increase blur' means relative to current blur value)."
+            
             # Combine with user request
-            full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}\n\nResponse (JSON only):"
+            full_prompt = f"{system_prompt}\n{context_str}\nUser request: {user_prompt}\n\nResponse (JSON only):"
             
             # Generate response
             response = model.generate_content(full_prompt)

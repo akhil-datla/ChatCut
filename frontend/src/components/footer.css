@@ -1,13 +1,211 @@
-.plugin-footer {
-  color: #fff;
+.plugin-footer-container {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  padding: 5px;
+  background: var(--color-bg-dark);
+  border-top: 1px solid var(--color-border-light);
+  padding: 0 8px; /* Add side padding to footer content so it's not flush with edge */
+  box-sizing: border-box;
+}
+
+.plugin-footer {
+  color: var(--color-text-offwhite);
+  width: 100%;
+  padding: 10px 0; /* Vertical padding only, side padding handled by container */
   display: flex;
   align-items: center;
   gap: 8px;
+  box-sizing: border-box;
 }
+
+/* Context Chips Container */
+.context-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 0 0;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+/* Hide scrollbar for context chips */
+.context-chips-container::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  background: transparent;
+}
+
+.context-chip {
+  display: flex;
+  align-items: center;
+  background-color: rgba(0, 120, 212, 0.2);
+  border: 1px solid rgba(0, 120, 212, 0.4);
+  border-radius: 4px;
+  padding: 2px 4px 2px 8px;
+  font-size: 11px;
+  color: #e0e0e0;
+  transition: background-color 0.2s;
+}
+
+.context-chip:hover {
+  background-color: rgba(0, 120, 212, 0.3);
+}
+
+.chip-label {
+  margin-right: 4px;
+}
+
+.chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  opacity: 0.7;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.chip-remove:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.close-icon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+/* Context Menu Styles */
+.context-btn-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.plus-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--color-border-light);
+  color: var(--color-text-offwhite);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #555;
+}
+
+.plus-btn:hover {
+  background-color: var(--color-text-offwhite);
+  color: var(--color-bg-dark);
+  transform: scale(1.05);
+}
+
+.plus-btn.active {
+  background-color: var(--color-text-offwhite);
+  color: var(--color-bg-dark);
+}
+
+.plus-btn.has-context {
+  background-color: var(--color-accent-blue);
+  border-color: var(--color-accent-blue);
+  color: white;
+}
+
+.plus-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.spinner-small.dark {
+  border-color: rgba(0,0,0,0.2);
+  border-top-color: #333;
+}
+
+/* Custom Dropdown (Cursor Style) */
+.custom-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background-color: #252526;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  min-width: 180px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  padding: 4px;
+  animation: popIn 0.1s ease-out;
+}
+
+/* Hide scrollbar for dropdown */
+.custom-dropdown::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  background: transparent;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(5px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropdown-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--color-text-offwhite);
+  cursor: pointer;
+  border-radius: 4px;
+  position: relative; /* For tooltip positioning */
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background-color: var(--color-accent-blue);
+  color: white;
+}
+
+.dropdown-item.selected {
+  background-color: rgba(0, 120, 212, 0.3);
+  color: #fff;
+}
+
+.dropdown-item.disabled {
+  color: #666;
+  cursor: default;
+}
+
+.dropdown-item.disabled:hover {
+  background-color: transparent;
+}
+
+/* Remove old styles */
+.context-bar, .context-label, .context-select, .context-preview, .icon-btn, .action-icon {
+  display: none;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .plugin-footer > * {
-  margin: 5px;
+  margin: 0; /* Reset margins as we use flex gap */
 }
 
 .chat-input {
@@ -15,19 +213,42 @@
   min-width: 120px;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid #666;
-  background: rgba(255,255,255,0.02);
-  color: var(--uxp-host-text-color-secondary, white);
+  appearance: none; /* CRITICAL: Remove native OS styling */
+  -webkit-appearance: none;
+  /* Grey background */
+  background-color: #3a3a3a; /* Explicit solid grey */
+  border: none; /* Remove default border */
+  color: var(--color-text-offwhite);
+  font-family: inherit;
+  font-size: 13px;
+  height: 32px; /* Force height */
+}
+
+.chat-input:focus {
+  outline: 1px solid var(--color-accent-blue);
+  background-color: #444444; /* Slightly lighter on focus */
+}
+
+.chat-input::placeholder {
+  color: #aaa;
 }
 
 .send-btn { 
   padding: 6px 10px;
   margin-left: 6px;
+  background: transparent;
+  border: none;
+  color: var(--color-accent-blue);
+  cursor: pointer;
+}
+
+.send-btn:hover {
+  color: white;
 }
 
 .send-icon {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   fill: currentColor;
   vertical-align: middle;
 }
@@ -56,8 +277,8 @@
 }
 
 .toggle-switch.active {
-  background: #0078d4;
-  border-color: #0078d4;
+  background: var(--color-accent-blue);
+  border-color: var(--color-accent-blue);
 }
 
 .toggle-slider {

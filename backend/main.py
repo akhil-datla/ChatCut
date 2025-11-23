@@ -56,7 +56,10 @@ async def process_user_prompt(request: ProcessPromptRequest):
         }
     """
     print(f"[AI] Processing prompt: {request.prompt}")
-    result = process_prompt(request.prompt)
+    if request.context_params:
+        print(f"[AI] Context parameters: {len(request.context_params)} items")
+        
+    result = process_prompt(request.prompt, request.context_params)
     print(f"[AI] Result: {result}")
     return ProcessPromptResponse(**result)
 

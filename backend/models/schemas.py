@@ -9,6 +9,7 @@ from pydantic import BaseModel
 class ProcessPromptRequest(BaseModel):
     """Request model for processing user prompts"""
     prompt: str
+    context_params: Optional[Dict[str, Any]] = None
 
 
 class ProcessPromptResponse(BaseModel):

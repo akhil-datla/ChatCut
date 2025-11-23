@@ -13,12 +13,13 @@ class AIProvider(ABC):
     """Abstract base class for AI providers"""
     
     @abstractmethod
-    def process_prompt(self, user_prompt: str) -> Dict[str, Any]:
+    def process_prompt(self, user_prompt: str, context_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Process user prompt and extract structured action with parameters.
         
         Args:
             user_prompt: Natural language user request
+            context_params: Optional context parameters (e.g., selected effect settings)
         
         Returns:
             {

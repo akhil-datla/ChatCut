@@ -39,7 +39,7 @@ def _get_provider() -> AIProvider:
     return _PROVIDER_INSTANCE
 
 
-def process_prompt(user_prompt: str) -> Dict[str, Any]:
+def process_prompt(user_prompt: str, context_params: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Process user prompt and extract structured action with parameters.
     
@@ -48,6 +48,7 @@ def process_prompt(user_prompt: str) -> Dict[str, Any]:
     
     Args:
         user_prompt: Natural language user request (e.g., "zoom in by 120%")
+        context_params: Optional context parameters (e.g., selected effect settings)
     
     Returns:
         {
@@ -58,7 +59,7 @@ def process_prompt(user_prompt: str) -> Dict[str, Any]:
         }
     """
     provider = _get_provider()
-    return provider.process_prompt(user_prompt)
+    return provider.process_prompt(user_prompt, context_params)
 
 
 def get_available_actions() -> Dict[str, Dict[str, Any]]:
