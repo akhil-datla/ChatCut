@@ -2,19 +2,20 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  background: var(--color-bg-dark);
-  border-top: 1px solid var(--color-border-light);
-  padding: 0 8px; /* Add side padding to footer content so it's not flush with edge */
+  background: rgba(30, 30, 30, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
   box-sizing: border-box;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .plugin-footer {
   color: var(--color-text-offwhite);
   width: 100%;
-  padding: 10px 0; /* Vertical padding only, side padding handled by container */
+  padding: 16px 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
   box-sizing: border-box;
 }
 
@@ -22,10 +23,11 @@
 .context-chips-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 0 0 0;
+  gap: 8px;
+  padding: 12px 0 8px 0;
   max-height: 60px;
   overflow-y: auto;
+  margin-bottom: 12px;
 }
 
 /* Hide scrollbar for context chips */
@@ -40,11 +42,12 @@
   align-items: center;
   background-color: rgba(0, 120, 212, 0.2);
   border: 1px solid rgba(0, 120, 212, 0.4);
-  border-radius: 4px;
-  padding: 2px 4px 2px 8px;
-  font-size: 11px;
+  border-radius: 6px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12px;
   color: #e0e0e0;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  line-height: 1.4;
 }
 
 .context-chip:hover {
@@ -85,8 +88,8 @@
 }
 
 .plus-btn {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background-color: var(--color-border-light);
   color: var(--color-text-offwhite);
@@ -96,12 +99,25 @@
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid #555;
+  flex-shrink: 0;
+  margin-right: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .plus-btn:hover {
   background-color: var(--color-text-offwhite);
   color: var(--color-bg-dark);
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.plus-btn:active {
   transform: scale(1.05);
+}
+
+.plus-btn:focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
 }
 
 .plus-btn.active {
@@ -116,8 +132,8 @@
 }
 
 .plus-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   fill: currentColor;
 }
 
@@ -157,18 +173,20 @@
 }
 
 .dropdown-item {
-  padding: 6px 10px;
+  padding: 8px 12px;
   font-size: 12px;
   color: var(--color-text-offwhite);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 6px;
   position: relative; /* For tooltip positioning */
   white-space: nowrap;
+  transition: all 0.2s ease;
 }
 
 .dropdown-item:hover {
   background-color: var(--color-accent-blue);
   color: white;
+  transform: translateX(2px);
 }
 
 .dropdown-item.selected {
@@ -204,29 +222,46 @@
   100% { transform: rotate(360deg); }
 }
 
-.plugin-footer > * {
-  margin: 0; /* Reset margins as we use flex gap */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
+
+/* Removed margin reset to allow explicit spacing */
 
 .chat-input {
   flex: 1 1 auto;
   min-width: 120px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  appearance: none; /* CRITICAL: Remove native OS styling */
+  padding: 12px 16px;
+  border-radius: 10px;
+  appearance: none;
   -webkit-appearance: none;
-  /* Grey background */
-  background-color: #3a3a3a; /* Explicit solid grey */
-  border: none; /* Remove default border */
+  background-color: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--color-text-offwhite);
   font-family: inherit;
-  font-size: 13px;
-  height: 32px; /* Force height */
+  font-size: 14px;
+  height: 44px;
+  transition: all 0.2s ease;
+  caret-color: white;
+  margin-left: 8px;
 }
 
 .chat-input:focus {
-  outline: 1px solid var(--color-accent-blue);
-  background-color: #444444; /* Slightly lighter on focus */
+  outline: none;
+  border: 2px solid var(--color-accent-blue);
+  background-color: rgba(30, 30, 30, 0.95);
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.2);
+}
+
+.chat-input:focus-visible {
+  outline: none;
+  border: 2px solid var(--color-accent-blue);
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.2);
+}
+
+.chat-input:focus::placeholder {
+  opacity: 0.6;
 }
 
 .chat-input::placeholder {
@@ -234,21 +269,38 @@
 }
 
 .send-btn { 
-  padding: 6px 10px;
-  margin-left: 6px;
-  background: transparent;
+  padding: 10px 16px;
+  background-color: var(--color-accent-blue);
   border: none;
-  color: var(--color-accent-blue);
+  color: white;
   cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 22px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .send-btn:hover {
-  color: white;
+  background-color: #0066b3;
+  transform: scale(1.05);
+}
+
+.send-btn:active {
+  transform: scale(1.0);
+  background-color: #005a9e;
+}
+
+.send-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
 }
 
 .send-icon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   fill: currentColor;
   vertical-align: middle;
 }
@@ -258,8 +310,16 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  margin-left: 8px;
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
   position: relative;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+}
+
+.toggle-container:hover {
+  opacity: 0.9;
 }
 
 .toggle-switch {
@@ -268,12 +328,13 @@
   background: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   position: relative;
-  transition: background 0.3s ease;
+  transition: all 0.3s ease;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .toggle-switch:hover {
   background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.02);
 }
 
 .toggle-switch.active {
@@ -289,7 +350,7 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 

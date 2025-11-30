@@ -7,6 +7,7 @@ export const Footer = (props) => {
   const [selectedContexts, setSelectedContexts] = React.useState([]); // Array of { name: "Mosaic", params: {...} }
   const [isLoadingEffects, setIsLoadingEffects] = React.useState(false);
   const [showContextSelect, setShowContextSelect] = React.useState(false);
+  const [isInputFocused, setIsInputFocused] = React.useState(false);
 
   const toggleProcessMedia = () => {
     if (props.setProcessMediaMode) {
@@ -133,6 +134,8 @@ export const Footer = (props) => {
             value={draft}
             placeholder="Type a message..."
             onChange={(e) => setDraft(e.target.value)}
+            onFocus={() => setIsInputFocused(true)}
+            onBlur={() => setIsInputFocused(false)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
