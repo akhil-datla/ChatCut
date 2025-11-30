@@ -12,17 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Python caches and artifacts
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
-*.egg-info/
-build/
-dist/
-
 # Python virtual environments
 venv/
 env/
@@ -49,32 +38,30 @@ zip
 src/hybrid/win/.vs
 
 .env
+.env.bak
 scripts/mac-sign.sh
 
-# MCP / local agent config
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Backend output
+backend/output/
+
+# Claude Code / AI tools
+.claude/
+.claude-flow/
+.swarm/
 .mcp.json
-
-# Archives and packages
-*.zip
-*.tar
-*.gz
-*.bz2
-*.zst
-*.7z
-*.zxp
-
-# Coverage and reports
-coverage/
-coverage.*
-*.cover
-*.lcov
-*.lcov.info
-
-# Documentation files
-*.pdf
-
-# Specific documentation to ignore
-MVP_STATUS.md
-QUICK_START.md
-SETUP.md
+CLAUDE.md
 plan.md
+
+# Test media files
+*.mp4
+*.webm
+*.mov
+
+# Misc
+*.zip
+*.pdf
+nul

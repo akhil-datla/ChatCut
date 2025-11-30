@@ -2,8 +2,10 @@ import React, { useState, useRef } from "react";
 import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
-import { applyZoom, applyTransition, applyFilter, applyRandomFilter, applyKeyframeDemo, applyTransitionDemo, applyFilterDemo, applyComprehensiveDemo } from "../services/editingActions";
-import { sendPing } from "../services/backendClient";
+import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
+import { getEffectParameters } from "../services/editingActions";
+import { processPrompt, processMedia, processWithColabStream } from "../services/backendClient";
+import { getSelectedMediaFilePaths, replaceClipMedia, getClipTimingInfo } from "../services/clipUtils";
 
 const ppro = require("premierepro");
 
@@ -14,6 +16,18 @@ export const Container = () => {
   ]);
   // sequential reply index (loops when reaching the end)
   const replyIndexRef = useRef(0);
+  
+  // Toggle for process media mode (send file paths to AI)
+  const [processMediaMode, setProcessMediaMode] = useState(false);
+
+  // Colab mode state
+  const [colabMode, setColabMode] = useState(false);
+  const [colabUrl, setColabUrl] = useState("");
+
+  // Progress tracking for Colab processing
+  const [processingProgress, setProcessingProgress] = useState(null); // null when not processing, 0-100 when active
+  const [processingMessage, setProcessingMessage] = useState("");
+  const [processingStage, setProcessingStage] = useState("");
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -32,28 +46,226 @@ export const Container = () => {
     setMessage([]);
   };
 
-  
+  /**
+   * Replace timeline clip with processed video
+   * Works for both Runway and Colab pipelines
+   */
+  const replaceClipWithProcessed = async (trackItems, response, writeToConsole) => {
+    if (!response.output_path || !response.original_path) {
+      return false;
+    }
 
-  const onSend = (text) => {
+    writeToConsole("🎬 Replacing clip with processed video...");
+
+    for (const trackItem of trackItems) {
+      try {
+        const projectItem = await trackItem.getProjectItem();
+        const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+        if (clipProjectItem) {
+          const mediaPath = await clipProjectItem.getMediaFilePath();
+          if (mediaPath === response.original_path) {
+            const success = await replaceClipMedia(trackItem, response.output_path);
+            if (success) {
+              writeToConsole(`✅ Replaced clip with processed video!`);
+              return true;
+            } else {
+              writeToConsole(`⚠️ Failed to replace clip`);
+              return false;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error replacing clip:", err);
+      }
+    }
+    return false;
+  };
+
+  const onSend = (text, contextParams = null) => {
     if (!text || !text.trim()) return;
     const userMsg = { id: `u-${Date.now()}`, sender: "user", text: text.trim() };
     addMessage(userMsg);
-    selectClips(text);
+    selectClips(text, contextParams);
   };
 
-  async function selectClips(text) {
+  const fetchAvailableEffects = async () => {
     try {
+      const project = await ppro.Project.getActiveProject();
+      if (!project) return [];
+      const sequence = await project.getActiveSequence();
+      if (!sequence) return [];
+      const selection = await sequence.getSelection();
+      if (!selection) return [];
+      const trackItems = await selection.getTrackItems();
+      if (!trackItems || trackItems.length === 0) return [];
+
+      // Use first clip for context
+      const item = trackItems[0];
+      const params = await getEffectParameters(item);
       
+      const results = [];
+      for (const p of params) {
+        let value = null;
+        try {
+          // Try simple get value
+          value = await p.param.getValue();
+        } catch (e) {
+          // If fails, try getting value at time 0
+          try {
+            const time = await ppro.TickTime.createWithSeconds(0);
+            value = await p.param.getValueAtTime(time);
+          } catch (e2) {
+            value = "unknown";
+          }
+        }
+        
+        // Handle Keyframe objects
+        if (value && typeof value === 'object' && typeof value.getValue === 'function') {
+          value = await value.getValue();
+        }
+        
+        results.push({
+          component: p.componentDisplayName,
+          parameter: p.paramDisplayName,
+          value: value,
+          id: `${p.componentDisplayName}::${p.paramDisplayName}`
+        });
+      }
+      return results;
+    } catch (err) {
+      console.error("Error fetching effects:", err);
+      return [];
+    }
+  };
+
+  async function selectClips(text, contextParams = null) {
+    try {
+
       // Get active project
       const project = await ppro.Project.getActiveProject();
-      const sequence = await project.getActiveSequence();
-      const selection = await sequence.getSelection();
-      const trackItems = await selection.getTrackItems();
-      console.log("Select Clips with prompt:", { trackItems, text });
-      // Send prompt and trackitems to backend
-      // Axios or fetch logic would go here
+      if (!project) {
+        writeToConsole("❌ No active project. Please open a project in Premiere Pro.");
+        return;
+      }
 
-      editClips(ppro,project,trackItems, text);
+      const sequence = await project.getActiveSequence();
+      if (!sequence) {
+        writeToConsole("❌ No active sequence. Please open a sequence in Premiere Pro.");
+        return;
+      }
+
+      const selection = await sequence.getSelection();
+      if (!selection) {
+        writeToConsole("❌ Could not get selection. Please select clips on the timeline.");
+        return;
+      }
+
+      // For Colab mode, skip AI preview and go straight to video clips
+      // Colab handles all processing itself (tracking, effects, etc.)
+      let aiResponse;
+      let isAudioAction = false;
+
+      if (!colabMode) {
+        // First, check what type of action this might be by processing the prompt
+        // This helps us determine if we need video or audio clips
+        try {
+          aiResponse = await processPrompt(text);
+          console.log("[SelectClips] AI preview:", aiResponse);
+        } catch (err) {
+          // If AI fails, default to video clips
+          console.warn("[SelectClips] Could not preview AI response, defaulting to video clips");
+        }
+
+        const actionType = aiResponse && aiResponse.action;
+        isAudioAction = actionType === 'adjustVolume' || actionType === 'applyAudioFilter';
+      }
+      
+      if (isAudioAction) {
+        // Get audio track items
+        const trackItems = await selection.getTrackItems(
+          ppro.Constants.TrackItemType.CLIP, 
+          true  // true means include all clip types (we'll filter for audio)
+        );
+        
+        // Filter to audio clips only
+        const audioTrackItems = [];
+        for (let i = 0; i < trackItems.length; i++) {
+          try {
+            const clip = trackItems[i];
+            // Try to get audio component chain - if it works, it's an audio clip
+            try {
+              const audioComponentChain = await clip.getComponentChain();
+              // Check if it's an audio clip by trying to get audio-specific properties
+              const mediaType = await clip.getMediaType();
+              // If we can get component chain without error, it might be audio
+              // More reliable: check if clip is on an audio track
+              const trackIndex = await clip.getTrackIndex();
+              const audioTrackCount = await sequence.getAudioTrackCount();
+              
+              if (trackIndex < audioTrackCount) {
+                audioTrackItems.push(clip);
+              }
+            } catch (err) {
+              // Not an audio clip, skip
+            }
+          } catch (err) {
+            // Skip this clip
+          }
+        }
+        
+        if (audioTrackItems.length === 0) {
+          writeToConsole("❌ No audio clips selected. Please select audio clips on audio tracks.");
+          return;
+        }
+        
+        console.log("Select Audio Clips with prompt:", { trackItems: audioTrackItems, text });
+        editClips(ppro, project, audioTrackItems, text, aiResponse, contextParams);
+      } else {
+        // Get video track items (default behavior)
+        const trackItems = await selection.getTrackItems(
+          ppro.Constants.TrackItemType.CLIP, 
+          false  // false means only video clips
+        );
+        
+        // Filter to video clips only if needed
+        const videoTrackItems = [];
+        for (let i = 0; i < trackItems.length; i++) {
+          try {
+            const clip = trackItems[i];
+            const componentChain = await clip.getComponentChain();
+            const componentCount = await componentChain.getComponentCount();
+            
+            // Check if clip has video components (Motion, Transform, etc.)
+            let hasVideo = false;
+            for (let j = 0; j < componentCount; j++) {
+              try {
+                const component = await componentChain.getComponentAtIndex(j);
+                const matchName = await component.getMatchName();
+                if (matchName.includes("Motion") || matchName.includes("ADBE") || matchName.includes("Video")) {
+                  hasVideo = true;
+                  break;
+                }
+              } catch (err) {
+                // Continue checking
+              }
+            }
+            
+            if (hasVideo) {
+              videoTrackItems.push(clip);
+            }
+          } catch (err) {
+            // Skip this clip
+          }
+        }
+        
+        if (videoTrackItems.length === 0) {
+          writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
+          return;
+        }
+        
+        console.log("Select Video Clips with prompt:", { trackItems: videoTrackItems, text });
+        editClips(ppro, project, videoTrackItems, text, aiResponse, contextParams);
+      }
 
 
 
@@ -67,16 +279,196 @@ export const Container = () => {
     }
   }
 
-  async function editClips(ppro, project, trackItems, text) {
+  async function editClips(ppro, project, trackItems, text, precomputedAiResponse = null, contextParams = null) {
     try {
-      const backendResponse = await sendPing(text);
-      writeToConsole(`Received Status: ${backendResponse.status}  Message: ${backendResponse.received}`);
-      writeToConsole("Applying edits...");
-      await applyComprehensiveDemo();
+      // Check if we have selected clips
+      if (!trackItems || trackItems.length === 0) {
+        writeToConsole("❌ No clips selected. Please select at least one clip on the timeline.");
+        console.error("[Edit] No trackItems provided");
+        return;
+      }
       
-      writeToConsole("✅ Edits complete!");
+      writeToConsole(`Found ${trackItems.length} selected clip(s)`);
+      
+      // Use precomputed AI response if available, otherwise process the prompt
+      let aiResponse = precomputedAiResponse;
+      
+      if (!aiResponse) {
+        writeToConsole(`🤖 Sending to AI: "${text}"`);
+        if (contextParams) {
+          writeToConsole(`📋 With context: ${Object.keys(contextParams).length} parameters`);
+        }
+        
+        // Determine which backend call to use based on mode
+        if (colabMode) {
+          // Colab object tracking mode with SSE streaming
+          if (!colabUrl || !colabUrl.trim()) {
+            writeToConsole("❌ No Colab URL set. Please paste your ngrok URL from Colab.");
+            return;
+          }
+
+          // Get timing info for server-side trimming (prevents uploading full source files)
+          const timingInfo = await getClipTimingInfo(trackItems[0]);
+          if (!timingInfo) {
+            writeToConsole("❌ Could not get clip timing info. Please select a valid clip.");
+            return;
+          }
+
+          const filePath = timingInfo.filePath;
+          const clipDuration = timingInfo.duration;
+
+          console.log(`[Colab] Trimmed clip: ${clipDuration.toFixed(2)}s (${timingInfo.inPoint.toFixed(2)}s - ${timingInfo.outPoint.toFixed(2)}s)`);
+          writeToConsole(`📐 Clip: ${clipDuration.toFixed(1)}s (trimmed from source)`);
+
+          // Start progress tracking (loading bar shows all progress info)
+          setProcessingProgress(0);
+          setProcessingMessage("Starting...");
+          setProcessingStage("upload");
+
+          try {
+            const colabResponse = await processWithColabStream(
+              filePath,
+              text,
+              colabUrl,
+              // Progress callback - update progress bar only (no chat spam)
+              (stage, progress, message, data) => {
+                setProcessingProgress(progress);
+                setProcessingMessage(message);
+                setProcessingStage(stage);
+              },
+              // Trim info for server-side FFmpeg trimming
+              { trim_start: timingInfo.inPoint, trim_end: timingInfo.outPoint }
+            );
+
+            // Clear progress bar
+            setProcessingProgress(null);
+            setProcessingMessage("");
+            setProcessingStage("");
+
+            if (colabResponse.error) {
+              writeToConsole(`❌ Colab error: ${colabResponse.message}`);
+              return;
+            }
+
+            // Use shared helper for clip replacement (same as Runway)
+            await replaceClipWithProcessed(trackItems, colabResponse, writeToConsole);
+          } catch (err) {
+            // Clear progress bar on error
+            setProcessingProgress(null);
+            setProcessingMessage("");
+            setProcessingStage("");
+            writeToConsole(`❌ Colab processing failed: ${err.message}`);
+          }
+          return; // Don't continue to standard AI processing
+
+        } else if (processMediaMode) {
+          const duration = await trackItems[0].getDuration();
+          console.log("Clip duration (seconds):", duration.seconds);
+          if (duration.seconds > 5){
+            writeToConsole("❌ Clip too long for generative AI processing. Please trim clip to 5 seconds or less.");
+            return;
+          }
+          const filePaths = await getSelectedMediaFilePaths(project);
+
+          if (filePaths.length === 0) {
+            writeToConsole("❌ No media files selected. Please select a clip.");
+            return;
+          }
+
+          if (filePaths.length > 1) {
+            writeToConsole("⚠️ Multiple clips selected. Processing first clip only.");
+          }
+
+          const filePath = filePaths[0];
+          writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
+          aiResponse = await processMedia(filePath, text);
+
+          // Use shared helper for clip replacement (same as Colab)
+          if (aiResponse.output_path && aiResponse.original_path) {
+            await replaceClipWithProcessed(trackItems, aiResponse, writeToConsole);
+          }
+        } else {
+          // Standard prompt-only processing
+          aiResponse = await processPrompt(text, contextParams);
+        }
+      } else {
+        writeToConsole(`🤖 Using precomputed AI response`);
+      }
+      
+      // Log AI response for debugging
+      console.log("[Edit] AI Response:", aiResponse);
+      
+      // Show AI confirmation
+      // Support single-action responses (legacy) and multi-action responses (new)
+      if (aiResponse.action) {
+        writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
+        if (aiResponse.message) {
+          writeToConsole(`💬 AI message: ${aiResponse.message}`);
+        }
+      } else if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
+        writeToConsole(`✨ AI extracted ${aiResponse.actions.length} actions`);
+        if (aiResponse.message) writeToConsole(`💬 AI message: ${aiResponse.message}`);
+        for (let i = 0; i < aiResponse.actions.length; i++) {
+          const a = aiResponse.actions[i];
+          writeToConsole(`  • ${a.action} ${JSON.stringify(a.parameters || {})}`);
+        }
+      } else {
+        // Handle special non-action responses
+        if (aiResponse.error === "SMALL_TALK") {
+          // Friendly chat reply without error styling
+          writeToConsole(aiResponse.message || "Hi! How can I help edit your video?");
+          return;
+        }
+        // Handle uncertainty messages from backend (no parameters expected)
+        if (aiResponse.error === "NEEDS_SELECTION" || aiResponse.error === "NEEDS_SPECIFICATION") {
+          writeToConsole(`🤔 ${aiResponse.message}`);
+        } else {
+          writeToConsole(`❌ AI couldn't understand: ${aiResponse.message || "Try: 'zoom in by 120%', 'zoom out', etc."}`);
+          if (aiResponse.error) {
+            writeToConsole(`⚠️ Error: ${aiResponse.error}`);
+          }
+        }
+        return;
+      }
+      
+      // Dispatch the action(s) with extracted parameters
+      let dispatchResult;
+      if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
+        // Multiple actions
+        dispatchResult = await dispatchActions(aiResponse.actions, trackItems);
+        const { summary } = dispatchResult;
+        if (summary.successful > 0) {
+          writeToConsole(`✅ Actions applied successfully to ${summary.successful} clip(s)!`);
+          if (summary.failed > 0) writeToConsole(`⚠️ Failed on ${summary.failed} clip(s)`);
+        } else {
+          writeToConsole(`❌ Failed to apply actions. Check console for errors.`);
+        }
+      } else {
+        // Single-action (legacy)
+        dispatchResult = await dispatchAction(aiResponse.action, trackItems, aiResponse.parameters || {});
+        const result = dispatchResult;
+        if (result.successful > 0) {
+          writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
+          if (result.failed > 0) {
+            writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
+          }
+        } else {
+          writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
+        }
+      }
+      
     } catch (err) {
-      writeToConsole(`❌ Error: ${err.message}`);
+      const errorMessage = err.message || err;
+      writeToConsole(`❌ Error: ${errorMessage}`);
+      
+      // Provide helpful guidance for common errors
+      if (errorMessage.includes("Backend server is not running")) {
+        writeToConsole(`💡 Hint: Start the backend server by running: cd ChatCut/backend && source venv/bin/activate && python main.py`);
+      } else if (errorMessage.includes("503") || errorMessage.includes("Network request failed")) {
+        writeToConsole(`💡 Hint: Make sure the backend server is running on port 3001`);
+      }
+      
+      console.error("[Edit] Edit function error:", err);
     }
   }
 
@@ -85,13 +477,28 @@ export const Container = () => {
       <div className="plugin-container">
         <Header />
         <Content message={message} />
-        <Footer writeToConsole={writeToConsole} clearConsole={clearConsole} onSend={onSend} />
+        <Footer
+          writeToConsole={writeToConsole}
+          clearConsole={clearConsole}
+          onSend={onSend}
+          processMediaMode={processMediaMode}
+          setProcessMediaMode={setProcessMediaMode}
+          colabMode={colabMode}
+          setColabMode={setColabMode}
+          colabUrl={colabUrl}
+          setColabUrl={setColabUrl}
+          fetchAvailableEffects={fetchAvailableEffects}
+          processingProgress={processingProgress}
+          processingMessage={processingMessage}
+          processingStage={processingStage}
+        />
       </div>
       <style>
         {`
     .plugin-container {
-      color: white;
-      padding: 8px 12px;
+      background-color: var(--color-bg-dark);
+      color: var(--color-text-offwhite);
+      padding: 0; /* edge-to-edge */
       display: flex;
       flex-direction: column;
       height: 100%;

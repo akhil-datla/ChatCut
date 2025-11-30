@@ -37,3 +37,162 @@
 .send-btn {
   margin-left: 6px;
 }
+
+/* Colab Mode Toggle */
+.toggle-container.colab-toggle:hover::after {
+  content: "Colab Mode (GPU)";
+}
+
+.toggle-switch.colab.active {
+  background: #f9ab00; /* Google Colab orange */
+  border-color: #f9ab00;
+}
+
+/* Colab URL Input Bar */
+.colab-url-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.colab-label {
+  font-size: 11px;
+  color: #f9ab00;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.colab-url-input {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #3a3a3a;
+  border: 1px solid rgba(249, 171, 0, 0.3);
+  color: var(--color-text-offwhite);
+  font-family: monospace;
+  font-size: 12px;
+  height: 28px;
+}
+
+.colab-url-input:focus {
+  outline: none;
+  border-color: #f9ab00;
+  background-color: #444444;
+}
+
+.colab-url-input::placeholder {
+  color: #888;
+}
+
+/* Colab Connection Status Dot */
+.colab-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  border: 1px solid var(--color-bg-dark);
+  transition: background-color 0.3s ease;
+}
+
+.colab-status-dot.connected {
+  background-color: #4caf50; /* Green */
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.5);
+}
+
+.colab-status-dot.disconnected {
+  background-color: #f44336; /* Red */
+  box-shadow: 0 0 4px rgba(244, 67, 54, 0.5);
+}
+
+.colab-status-dot.checking {
+  background-color: #9e9e9e; /* Gray */
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Progress Bar Styles */
+.progress-bar-container {
+  width: 100%;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.progress-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f9ab00, #ffcc00);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer effect */
+.progress-bar-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+.progress-percentage {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f9ab00;
+  min-width: 36px;
+  text-align: right;
+}
+
+.progress-message {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-stage {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
