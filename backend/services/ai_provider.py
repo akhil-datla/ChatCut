@@ -13,12 +13,13 @@ class AIProvider(ABC):
     """Abstract base class for AI providers"""
     
     @abstractmethod
-    def process_prompt(self, user_prompt: str) -> Dict[str, Any]:
+    def process_prompt(self, user_prompt: str, context_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Process user prompt and extract structured action with parameters.
         
         Args:
             user_prompt: Natural language user request
+            context_params: Optional context parameters (e.g., selected effect settings)
         
         Returns:
             {
@@ -49,12 +50,15 @@ class AIProviderResult:
         self,
         action: Optional[str] = None,
         parameters: Optional[Dict[str, Any]] = None,
+        actions: Optional[list] = None,
         confidence: float = 0.0,
         message: str = "",
         error: Optional[str] = None
     ):
         self.action = action
         self.parameters = parameters or {}
+        # 'actions' is an optional list of action objects: [{"action": "applyFilter", "parameters": {...}}, ...]
+        self.actions = actions or None
         self.confidence = confidence
         self.message = message
         self.error = error
@@ -64,6 +68,7 @@ class AIProviderResult:
         return {
             "action": self.action,
             "parameters": self.parameters,
+            "actions": self.actions,
             "confidence": self.confidence,
             "message": self.message,
             "error": self.error
@@ -77,6 +82,20 @@ class AIProviderResult:
             parameters=parameters,
             confidence=confidence,
             message=message or f"Extracted action: {action}"
+        )
+
+    @classmethod
+    def success_multiple(cls, actions: list, message: str = "", confidence: float = 1.0):
+        """Create a successful result with multiple actions
+
+        actions: list of {"action": str, "parameters": dict}
+        """
+        return cls(
+            action=None,
+            parameters={},
+            actions=actions,
+            confidence=confidence,
+            message=message or f"Extracted {len(actions)} actions"
         )
     
     @classmethod

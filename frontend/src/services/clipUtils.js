@@ -1,3 +1,4 @@
+import { zoomIn } from "./editingActions";
 const ppro = require("premierepro");
 
 /**
@@ -416,5 +417,119 @@ export async function getSelectedMediaFilePaths(project, { includeSequence = fal
   return Array.from(paths);
 }
 
+/**
+ * Replace a clip's media source with a new video file
+ * @param {TrackItem} trackItem - Premiere Pro TrackItem to replace
+ * @param {string} newMediaPath - Absolute path to the new video file
+ * @returns {Promise<boolean>} True if successful
+ */
+export async function replaceClipMedia(trackItem, newMediaPath) {
+  try {
+    log(`Replacing clip media with: ${newMediaPath}`, "blue");
+    
+    // Get the project item from the track item
+    const projectItem = await trackItem.getProjectItem();
+    const trackIndex = await trackItem.getTrackIndex();
+    const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+    
+    if (!clipProjectItem) {
+      log("Failed to cast to ClipProjectItem", "red");
+      return false;
+    }
+    
+    // Get the project to import the new media
+    const project = await ppro.Project.getActiveProject();
+    
+    // Import the new video file
+    log(`Importing new media file: ${newMediaPath}`, "blue");
+    
+    const importSuccess = await project.importFiles(
+      [newMediaPath],
+      true,  // suppressUI
+      null,  // targetBin - import to project root
+      false  // importAsNumberedStills
+    );
+    
+    if (!importSuccess) {
+      log("Failed to import new media file", "red");
+      return false;
+    }
+    
+    // Find the newly imported item in project root
+    log("Searching for imported file in project...", "blue");
+    const rootItem = await project.getRootItem();
+    const children = await rootItem.getItems();
+    
+    let newProjectItem = null;
+    let newProjectClip = null;
+    for (const child of children) {
+      const childClip = ppro.ClipProjectItem.cast(child);
+      console.log("Checking child item:", child);
+      if (childClip) {
+        try {
+          const childPath = await childClip.getMediaFilePath();
+          if (childPath === newMediaPath) {
+            newProjectItem = child;
+            newProjectClip = childClip;
+            log(`Found imported file: ${childPath}`, "green");
+            break;
+          }
+        } catch (err) {
+          // Skip items that don't have media paths
+          continue;
+        }
+      }
+    }
+    
+    if (!newProjectItem) {
+      log("Could not find newly imported media in project", "red");
+      return false;
+    }
+    
+    // Replace the original project item's media path with the new one
+    log("Changing media path of original project item", "blue");
+    
+    // Use changeMediaFilePath to relink the existing project item to the new file
+    // createRemoveItemsAction(trackItemSelection: TrackItemSelection, ripple: boolean, mediaType: Constants.MediaType, shiftOverLapping?: boolean)
+    const sequence = await project.getActiveSequence();
+    const sequenceEditor = ppro.SequenceEditor.getEditor(sequence);
+    const index = await trackItem.getTrackIndex();
+    const startTime = await trackItem.getStartTime();
+    project.lockedAccess(() => {
+        project.executeTransaction((compoundAction) => {
+          const insertItemAction = sequenceEditor.createOverwriteItemAction(
+            newProjectItem, // reference for creating trackItem for overwrite
+            startTime, // time
+            index, // video track index
+            index
+          );
+          compoundAction.addAction(insertItemAction);
+        }, "TrackItem Inserted");
+    });
+    const track = await sequence.getVideoTrack(trackIndex);
+    const trackItems = await track.getTrackItems(
+            ppro.Constants.TrackItemType.CLIP, 
+            false  
+          );
+    const replacedVideoClip = trackItems[index]
+
+    await zoomIn(replacedVideoClip, { endScale: 150});
+
+
+    
+    if (!changed) {
+      log("Failed to change media file path", "red");
+      return false;
+    }
+    
+    log("✓ Successfully replaced clip media", "green");
+    return true;
+    
+  } catch (err) {
+    log(`Error replacing clip media: ${err}`, "red");
+    console.error(err);
+    return false;
+  }
+}
 
 

@@ -13,6 +13,8 @@ from models.schemas import (
 )
 from services.ai_service import process_prompt
 
+from services.providers.video_provider import process_media
+
 # Load environment variables
 load_dotenv()
 
@@ -54,36 +56,49 @@ async def process_user_prompt(request: ProcessPromptRequest):
         }
     """
     print(f"[AI] Processing prompt: {request.prompt}")
-    result = process_prompt(request.prompt)
+    if request.context_params:
+        print(f"[AI] Context parameters: {len(request.context_params)} items")
+        
+    result = process_prompt(request.prompt, request.context_params)
     print(f"[AI] Result: {result}")
     return ProcessPromptResponse(**result)
 
 
 @app.post("/api/process-media", response_model=ProcessMediaResponse)
 async def process_media_files(request: ProcessMediaRequest):
-    """Process media files with AI. Validates file access and processes prompt."""
-    print(f"[Media] Processing {len(request.filePaths)} file(s): {request.prompt}")
+    """Process a single media file with AI. Validates file access and processes prompt."""
+    print(f"[Media] Processing file: {request.prompt}")
     
-    # Quick check: count accessible files
-    accessible = 0
-    for path in request.filePaths:
-        try:
-            if Path(path).exists() and os.access(path, os.R_OK):
-                accessible += 1
-                print(f"  ✓ {Path(path).name}")
-        except Exception as e:
-            print(f"  ✗ {path}: {e}")
-    
-    if accessible == 0:
+    # Validate file access
+    file_path = request.filePath
+    try:
+        if not Path(file_path).exists():
+            return ProcessMediaResponse(
+                action=None,
+                message=f"File not found: {file_path}",
+                error="FILE_NOT_FOUND"
+            )
+        
+        if not os.access(file_path, os.R_OK):
+            return ProcessMediaResponse(
+                action=None,
+                message=f"Cannot read file: {file_path}",
+                error="FILE_ACCESS_ERROR"
+            )
+        
+        print(f"  ✓ {Path(file_path).name}")
+        
+    except Exception as e:
+        print(f"  ✗ {file_path}: {e}")
         return ProcessMediaResponse(
             action=None,
-            message=f"Could not access any files. Check paths.",
+            message=f"Error accessing file: {str(e)}",
             error="FILE_ACCESS_ERROR"
         )
     
-    # Process prompt with AI
-    ai_result = process_prompt(request.prompt)
-    print(f"[Media] Result: action={ai_result.get('action')}, files OK={accessible}/{len(request.filePaths)}")
+    # Process media with video provider
+    ai_result = process_media(request.prompt, file_path)
+    print(f"[Media] Result: action={ai_result.get('action')}")
     
     return ProcessMediaResponse(**ai_result)
 

@@ -27,27 +27,33 @@ export async function sendPing(message) {
 
 /**
  * Process user prompt through AI and get structured action
- * 
- * @param {string} prompt - User's natural language request
- * @returns {Promise<object>} AI response with action and parameters
- * 
- * Example response:
- * {
- *   action: "zoomIn",
- *   parameters: { endScale: 120, animated: false },
- *   confidence: 1.0,
- *   message: "Zooming in to 120%"
- * }
- */
-export async function processPrompt(prompt) {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/process-prompt`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ prompt }),
-    });
+   * 
+   * @param {string} prompt - User's natural language request
+   * @param {object} contextParams - Optional context parameters (e.g., selected effect settings)
+   * @returns {Promise<object>} AI response with action and parameters
+   * 
+   * Example response:
+   * {
+   *   action: "zoomIn",
+   *   parameters: { endScale: 120, animated: false },
+   *   confidence: 1.0,
+   *   message: "Zooming in to 120%"
+   * }
+   */
+export async function processPrompt(prompt, contextParams = null) {
+    try {
+      const body = { prompt };
+      if (contextParams) {
+        body.context_params = contextParams;
+      }
+  
+      const response = await fetch(`${BACKEND_URL}/api/process-prompt`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -83,14 +89,14 @@ export async function processPrompt(prompt) {
  *   message: "Applying black and white filter based on media analysis"
  * }
  */
-export async function processMedia(filePaths, prompt) {
+export async function processMedia(filePath, prompt) {
   try {
     const response = await fetch(`${BACKEND_URL}/api/process-media`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ filePaths, prompt }),
+      body: JSON.stringify({ filePath, prompt }),
     });
 
     if (!response.ok) {
