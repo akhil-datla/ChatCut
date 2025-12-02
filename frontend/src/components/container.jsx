@@ -181,6 +181,7 @@ export const Container = () => {
   }
 
   async function editClips(ppro, project, trackItems, text, precomputedAiResponse = null) {
+    let aiResponse = null; // Declare outside try block for error handling
     try {
       // Check if we have selected clips
       if (!trackItems || trackItems.length === 0) {
@@ -192,7 +193,7 @@ export const Container = () => {
       writeToConsole(`Found ${trackItems.length} selected clip(s)`);
       
       // Use precomputed AI response if available, otherwise process the prompt
-      let aiResponse = precomputedAiResponse;
+      aiResponse = precomputedAiResponse;
       
       if (!aiResponse) {
         writeToConsole(`🤖 Sending to AI: "${text}"`);
@@ -246,25 +247,52 @@ export const Container = () => {
         aiResponse.parameters || {}
       );
       
-      // Report results
+      // Determine if this is an audio action for separate error handling
+      const isAudioAction = aiResponse.action === 'adjustVolume' || aiResponse.action === 'applyAudioFilter';
+      
+      // Report results with separate handling for audio vs video
       if (result.successful > 0) {
-        writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
+        if (isAudioAction) {
+          writeToConsole(`✅ Audio effect applied successfully to ${result.successful} clip(s)!`);
+        } else {
+          writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
+        }
         if (result.failed > 0) {
-          writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
+          if (isAudioAction) {
+            writeToConsole(`⚠️ Audio effect failed on ${result.failed} clip(s). Check that audio clips are selected and have the required audio filters available.`);
+          } else {
+            writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
+          }
         }
       } else {
-        writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
+        if (isAudioAction) {
+          writeToConsole(`❌ Audio effect failed. Make sure you have audio clips selected and the requested audio filter is available.`);
+        } else {
+          writeToConsole(`❌ Failed to apply action to any clips. Check console for errors.`);
+        }
       }
       
     } catch (err) {
       const errorMessage = err.message || err;
-      writeToConsole(`❌ Error: ${errorMessage}`);
       
-      // Provide helpful guidance for common errors
-      if (errorMessage.includes("Backend server is not running")) {
-        writeToConsole(`💡 Hint: Start the backend server by running: cd ChatCut/backend && source venv/bin/activate && python main.py`);
-      } else if (errorMessage.includes("503") || errorMessage.includes("Network request failed")) {
-        writeToConsole(`💡 Hint: Make sure the backend server is running on port 3001`);
+      // Check if this was an audio action based on the AI response
+      const isAudioAction = aiResponse && (
+        aiResponse.action === 'adjustVolume' || 
+        aiResponse.action === 'applyAudioFilter'
+      );
+      
+      if (isAudioAction) {
+        writeToConsole(`❌ Audio editing error: ${errorMessage}`);
+        writeToConsole(`💡 Audio editing tips: Make sure audio clips are selected, and the requested audio filter exists in Premiere Pro.`);
+      } else {
+        writeToConsole(`❌ Error: ${errorMessage}`);
+        
+        // Provide helpful guidance for common errors
+        if (errorMessage.includes("Backend server is not running")) {
+          writeToConsole(`💡 Hint: Start the backend server by running: cd ChatCut/backend && source venv/bin/activate && python main.py`);
+        } else if (errorMessage.includes("503") || errorMessage.includes("Network request failed")) {
+          writeToConsole(`💡 Hint: Make sure the backend server is running on port 3001`);
+        }
       }
       
       console.error("[Edit] Edit function error:", err);

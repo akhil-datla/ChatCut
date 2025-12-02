@@ -72,8 +72,12 @@ class GeminiProvider(AIProvider):
             model_name = self.model_name.replace("models/", "") if self.model_name.startswith("models/") else self.model_name
             model = genai.GenerativeModel(model_name)
             
-            # Create system prompt
-            system_prompt = self._get_system_prompt()
+            # Determine if this is an audio-related request and use appropriate prompt
+            is_audio_request = self._is_audio_request(user_prompt)
+            if is_audio_request:
+                system_prompt = self._get_audio_system_prompt()
+            else:
+                system_prompt = self._get_system_prompt()
             
             # Combine with user request
             full_prompt = f"{system_prompt}\n\nUser request: {user_prompt}\n\nResponse (JSON only):"
@@ -450,6 +454,94 @@ SMALL TALK (greetings/chit-chat):
 
 """
 
+    def _get_audio_system_prompt(self) -> str:
+        """Get the system prompt specifically for audio editing"""
+        return """You are an audio editing assistant. Extract the action and parameters from user requests for audio clips.
+
+Available actions:
+- applyAudioFilter: Apply an audio effect/filter to an audio clip (parameters: filterDisplayName)
+- adjustVolume: Adjust volume of an audio clip (parameters: volumeDb)
+
+Parameters:
+- filterDisplayName: Display name of the audio filter (e.g., "Reverb", "Parametric EQ", "DeNoise", "Chorus/Flanger", "Delay", "Distortion", "Multiband Compressor", "Hard Limiter", "Phaser", "Pitch Shifter")
+- volumeDb: Volume adjustment in decibels (positive = louder, negative = quieter). Examples: 3, -6, 6dB, -3dB
+
+AUDIO FILTER SELECTION (CRITICAL when user asks for an audio effect/filter):
+- You MUST choose the filterDisplayName from common audio filter names. Use display names that are user-friendly.
+- Common audio filters include:
+  - "Reverb" (or "Studio Reverb", "Convolution Reverb", "Surround Reverb")
+  - "Parametric EQ" (or "Parametric Equalizer", "Simple Parametric EQ")
+  - "Graphic Equalizer" (10, 20, or 30 bands)
+  - "DeNoise" (or "Adaptive Noise Reduction")
+  - "DeEsser"
+  - "Chorus/Flanger" (or "Chorus", "Flanger")
+  - "Delay" (or "Multitap Delay", "Analog Delay")
+  - "Distortion"
+  - "Multiband Compressor" (or "Single-band Compressor", "Tube-modeled Compressor")
+  - "Hard Limiter"
+  - "Phaser"
+  - "Pitch Shifter"
+  - "Channel Volume" (or "Gain", "Volume")
+
+When a user requests an audio filter:
+- If a single best match exists, return:
+    {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "<filter name>"}, "message": "Applying <filter name>"}
+- If multiple plausible matches exist or you are uncertain, return:
+    {"action": null, "message": "Natural language response of best-matching audio filters based on user description."}
+- Use common, user-friendly names. The system will match them to exact filter names.
+
+VOLUME ADJUSTMENT:
+- Extract decibel values from user requests
+- Positive values = louder, negative values = quieter
+- Examples:
+  - "make it louder by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
+  - "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+  - "increase volume by 3" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
+  - "reduce volume by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+
+Examples:
+- "add reverb" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Reverb"}, "message": "Applying Reverb"}
+- "apply parametric eq" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Parametric EQ"}, "message": "Applying Parametric EQ"}
+- "add noise reduction" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "DeNoise"}, "message": "Applying DeNoise"}
+- "adjust volume by 3 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
+- "make it louder by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 6}}
+- "reduce volume by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}}
+- "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+
+Return ONLY valid JSON in this format:
+{
+    "action": "actionName",
+    "parameters": {...},
+    "message": "Brief explanation"
+}
+
+If the request is unclear or not an audio editing action, return:
+{
+    "action": null,
+    "parameters": {},
+    "message": "I don't understand this audio editing request."
+}
+
+SMALL TALK (greetings/chit-chat):
+- If the user greets or engages in small talk (e.g., "hello", "hi", "hey", "good morning", "good evening", "thank you", "thanks"), do NOT invent an edit action.
+- Respond with a short friendly message and suggestions, with action = null.
+
+"""
+
+    def _is_audio_request(self, user_prompt: Optional[str]) -> bool:
+        """Check if the user prompt is audio-related"""
+        if not user_prompt:
+            return False
+        text = user_prompt.strip().lower()
+        # Audio-related keywords
+        audio_keywords = [
+            "audio", "sound", "volume", "reverb", "eq", "equalizer", "equaliser",
+            "noise reduction", "denoise", "deesser", "chorus", "flanger", "delay",
+            "distortion", "compressor", "limiter", "phaser", "pitch", "gain",
+            "louder", "quieter", "mute", "unmute", "decibel", "db", "dbs", "dB"
+        ]
+        return any(keyword in text for keyword in audio_keywords)
+    
     def _small_talk_reply(self, user_prompt: Optional[str]) -> Optional[str]:
         """Return a friendly small-talk reply if the prompt is chit-chat; otherwise None."""
         if not user_prompt:
