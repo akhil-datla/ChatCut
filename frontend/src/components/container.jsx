@@ -4,8 +4,8 @@ import { Footer } from "./footer";
 import { Header } from "./header";
 import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
 import { getEffectParameters } from "../services/editingActions";
-import { processPrompt, processMedia } from "../services/backendClient";
-import { getSelectedMediaFilePaths, replaceClipMedia } from "../services/clipUtils";
+import { processPrompt, processMedia, processWithColabStream } from "../services/backendClient";
+import { getSelectedMediaFilePaths, replaceClipMedia, getClipTimingInfo } from "../services/clipUtils";
 
 const ppro = require("premierepro");
 
@@ -19,6 +19,15 @@ export const Container = () => {
   
   // Toggle for process media mode (send file paths to AI)
   const [processMediaMode, setProcessMediaMode] = useState(false);
+
+  // Colab mode state
+  const [colabMode, setColabMode] = useState(false);
+  const [colabUrl, setColabUrl] = useState("");
+
+  // Progress tracking for Colab processing
+  const [processingProgress, setProcessingProgress] = useState(null); // null when not processing, 0-100 when active
+  const [processingMessage, setProcessingMessage] = useState("");
+  const [processingStage, setProcessingStage] = useState("");
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -37,7 +46,40 @@ export const Container = () => {
     setMessage([]);
   };
 
-  
+  /**
+   * Replace timeline clip with processed video
+   * Works for both Runway and Colab pipelines
+   */
+  const replaceClipWithProcessed = async (trackItems, response, writeToConsole) => {
+    if (!response.output_path || !response.original_path) {
+      return false;
+    }
+
+    writeToConsole("🎬 Replacing clip with processed video...");
+
+    for (const trackItem of trackItems) {
+      try {
+        const projectItem = await trackItem.getProjectItem();
+        const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+        if (clipProjectItem) {
+          const mediaPath = await clipProjectItem.getMediaFilePath();
+          if (mediaPath === response.original_path) {
+            const success = await replaceClipMedia(trackItem, response.output_path);
+            if (success) {
+              writeToConsole(`✅ Replaced clip with processed video!`);
+              return true;
+            } else {
+              writeToConsole(`⚠️ Failed to replace clip`);
+              return false;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error replacing clip:", err);
+      }
+    }
+    return false;
+  };
 
   const onSend = (text, contextParams = null) => {
     if (!text || !text.trim()) return;
@@ -98,39 +140,45 @@ export const Container = () => {
 
   async function selectClips(text, contextParams = null) {
     try {
-      
+
       // Get active project
       const project = await ppro.Project.getActiveProject();
       if (!project) {
         writeToConsole("❌ No active project. Please open a project in Premiere Pro.");
         return;
       }
-      
+
       const sequence = await project.getActiveSequence();
       if (!sequence) {
         writeToConsole("❌ No active sequence. Please open a sequence in Premiere Pro.");
         return;
       }
-      
+
       const selection = await sequence.getSelection();
       if (!selection) {
         writeToConsole("❌ Could not get selection. Please select clips on the timeline.");
         return;
       }
-      
-      // First, check what type of action this might be by processing the prompt
-      // This helps us determine if we need video or audio clips
+
+      // For Colab mode, skip AI preview and go straight to video clips
+      // Colab handles all processing itself (tracking, effects, etc.)
       let aiResponse;
-      try {
-        aiResponse = await processPrompt(text);
-        console.log("[SelectClips] AI preview:", aiResponse);
-      } catch (err) {
-        // If AI fails, default to video clips
-        console.warn("[SelectClips] Could not preview AI response, defaulting to video clips");
+      let isAudioAction = false;
+
+      if (!colabMode) {
+        // First, check what type of action this might be by processing the prompt
+        // This helps us determine if we need video or audio clips
+        try {
+          aiResponse = await processPrompt(text);
+          console.log("[SelectClips] AI preview:", aiResponse);
+        } catch (err) {
+          // If AI fails, default to video clips
+          console.warn("[SelectClips] Could not preview AI response, defaulting to video clips");
+        }
+
+        const actionType = aiResponse && aiResponse.action;
+        isAudioAction = actionType === 'adjustVolume' || actionType === 'applyAudioFilter';
       }
-      
-      const actionType = aiResponse && aiResponse.action;
-      const isAudioAction = actionType === 'adjustVolume' || actionType === 'applyAudioFilter';
       
       if (isAudioAction) {
         // Get audio track items
@@ -252,8 +300,69 @@ export const Container = () => {
           writeToConsole(`📋 With context: ${Object.keys(contextParams).length} parameters`);
         }
         
-        // Determine which backend call to use based on processMediaMode
-        if (processMediaMode) {
+        // Determine which backend call to use based on mode
+        if (colabMode) {
+          // Colab object tracking mode with SSE streaming
+          if (!colabUrl || !colabUrl.trim()) {
+            writeToConsole("❌ No Colab URL set. Please paste your ngrok URL from Colab.");
+            return;
+          }
+
+          // Get timing info for server-side trimming (prevents uploading full source files)
+          const timingInfo = await getClipTimingInfo(trackItems[0]);
+          if (!timingInfo) {
+            writeToConsole("❌ Could not get clip timing info. Please select a valid clip.");
+            return;
+          }
+
+          const filePath = timingInfo.filePath;
+          const clipDuration = timingInfo.duration;
+
+          console.log(`[Colab] Trimmed clip: ${clipDuration.toFixed(2)}s (${timingInfo.inPoint.toFixed(2)}s - ${timingInfo.outPoint.toFixed(2)}s)`);
+          writeToConsole(`📐 Clip: ${clipDuration.toFixed(1)}s (trimmed from source)`);
+
+          // Start progress tracking (loading bar shows all progress info)
+          setProcessingProgress(0);
+          setProcessingMessage("Starting...");
+          setProcessingStage("upload");
+
+          try {
+            const colabResponse = await processWithColabStream(
+              filePath,
+              text,
+              colabUrl,
+              // Progress callback - update progress bar only (no chat spam)
+              (stage, progress, message, data) => {
+                setProcessingProgress(progress);
+                setProcessingMessage(message);
+                setProcessingStage(stage);
+              },
+              // Trim info for server-side FFmpeg trimming
+              { trim_start: timingInfo.inPoint, trim_end: timingInfo.outPoint }
+            );
+
+            // Clear progress bar
+            setProcessingProgress(null);
+            setProcessingMessage("");
+            setProcessingStage("");
+
+            if (colabResponse.error) {
+              writeToConsole(`❌ Colab error: ${colabResponse.message}`);
+              return;
+            }
+
+            // Use shared helper for clip replacement (same as Runway)
+            await replaceClipWithProcessed(trackItems, colabResponse, writeToConsole);
+          } catch (err) {
+            // Clear progress bar on error
+            setProcessingProgress(null);
+            setProcessingMessage("");
+            setProcessingStage("");
+            writeToConsole(`❌ Colab processing failed: ${err.message}`);
+          }
+          return; // Don't continue to standard AI processing
+
+        } else if (processMediaMode) {
           const duration = await trackItems[0].getDuration();
           console.log("Clip duration (seconds):", duration.seconds);
           if (duration.seconds > 5){
@@ -261,45 +370,23 @@ export const Container = () => {
             return;
           }
           const filePaths = await getSelectedMediaFilePaths(project);
-          
+
           if (filePaths.length === 0) {
             writeToConsole("❌ No media files selected. Please select a clip.");
             return;
           }
-          
+
           if (filePaths.length > 1) {
             writeToConsole("⚠️ Multiple clips selected. Processing first clip only.");
           }
-          
+
           const filePath = filePaths[0];
           writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
           aiResponse = await processMedia(filePath, text);
-          
-          // If we got a processed video back, replace it in the timeline
+
+          // Use shared helper for clip replacement (same as Colab)
           if (aiResponse.output_path && aiResponse.original_path) {
-            writeToConsole("🎬 Replacing clip with processed video...");
-            
-            // Find the track item that uses this original media
-            for (const trackItem of trackItems) {
-              try {
-                const projectItem = await trackItem.getProjectItem();
-                const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
-                if (clipProjectItem) {
-                  const mediaPath = await clipProjectItem.getMediaFilePath();
-                  if (mediaPath === aiResponse.original_path) {
-                    const success = await replaceClipMedia(trackItem, aiResponse.output_path);
-                    if (success) {
-                      writeToConsole(`✅ Replaced clip with processed video!`);
-                    } else {
-                      writeToConsole(`⚠️ Failed to replace clip`);
-                    }
-                    break; // Only replace first matching clip
-                  }
-                }
-              } catch (err) {
-                console.error("Error replacing clip:", err);
-              }
-            }
+            await replaceClipWithProcessed(trackItems, aiResponse, writeToConsole);
           }
         } else {
           // Standard prompt-only processing
@@ -419,13 +506,20 @@ export const Container = () => {
       <div className="plugin-container">
         <Header />
         <Content message={message} />
-        <Footer 
-          writeToConsole={writeToConsole} 
-          clearConsole={clearConsole} 
+        <Footer
+          writeToConsole={writeToConsole}
+          clearConsole={clearConsole}
           onSend={onSend}
           processMediaMode={processMediaMode}
           setProcessMediaMode={setProcessMediaMode}
+          colabMode={colabMode}
+          setColabMode={setColabMode}
+          colabUrl={colabUrl}
+          setColabUrl={setColabUrl}
           fetchAvailableEffects={fetchAvailableEffects}
+          processingProgress={processingProgress}
+          processingMessage={processingMessage}
+          processingStage={processingStage}
         />
       </div>
       <style>
