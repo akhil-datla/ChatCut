@@ -34,20 +34,12 @@ class GeminiProvider(AIProvider):
         self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         self._configured = False
         
-        if not GEMINI_AVAILABLE:
-            print(f"⚠️  WARNING: google-generativeai library not installed. Run: pip install google-generativeai")
-        elif not self.api_key:
-            print(f"⚠️  WARNING: GEMINI_API_KEY not set in environment")
-        elif self.api_key:
+        if self.api_key and GEMINI_AVAILABLE:
             try:
                 genai.configure(api_key=self.api_key)
                 self._configured = True
-                print(f"✅ Gemini API configured successfully (key length: {len(self.api_key)})")
             except Exception as e:
-                print(f"⚠️  ERROR: Failed to configure Gemini: {e}")
-                print(f"   API key length: {len(self.api_key) if self.api_key else 0}")
-                import traceback
-                traceback.print_exc()
+                print(f"⚠️  Warning: Failed to configure Gemini: {e}")
     
     def is_configured(self) -> bool:
         """Check if Gemini is properly configured"""

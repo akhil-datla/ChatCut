@@ -388,70 +388,29 @@ export async function getSelectedMediaFilePaths(project, { includeSequence = fal
       return [];
     }
     const sequence = await project.getActiveSequence();
-    if (!sequence) {
-      log("getSelectedMediaFilePaths: No active sequence", "yellow");
-      return [];
-    }
     const selection = await sequence.getSelection();
     if (!selection) {
-      log("getSelectedMediaFilePaths: No selection in timeline", "yellow");
+      log("getSelectedMediaFilePaths: No Project panel selection", "yellow");
       return [];
     }
     const items = await selection.getTrackItems(
       ppro.Constants.TrackItemType.CLIP, 
       false  // false means only video clips
     );
-    
-    if (!items || items.length === 0) {
-      log("getSelectedMediaFilePaths: No track items selected", "yellow");
-      return [];
-    }
-    
-    log(`getSelectedMediaFilePaths: Processing ${items.length} track item(s)`, "blue");
-    
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    for (const item of items) {
       try {
         const projectItem = await item.getProjectItem();
-        if (!projectItem) {
-          log(`getSelectedMediaFilePaths: Item ${i} has no projectItem`, "yellow");
-          continue;
-        }
-        
         const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
-        if (!clipProjectItem) {
-          log(`getSelectedMediaFilePaths: Item ${i} is not a ClipProjectItem`, "yellow");
-          continue;
-        }
-        
-        // Check if offline
-        const isOffline = await clipProjectItem.isOffline();
-        if (isOffline) {
-          log(`getSelectedMediaFilePaths: Item ${i} is offline, skipping`, "yellow");
-          continue;
-        }
-        
+        if (!clipProjectItem) continue;
         if (!includeSequence) {
           const contentType = await clipProjectItem.getContentType();
-          if (contentType !== ppro.Constants.ContentType.MEDIA) {
-            log(`getSelectedMediaFilePaths: Item ${i} is not MEDIA type (${contentType}), skipping`, "yellow");
-            continue;
-          }
+          if (contentType !== ppro.Constants.ContentType.MEDIA) continue;
         }
-        
         const path = await clipProjectItem.getMediaFilePath();
-        if (path) {
-          log(`getSelectedMediaFilePaths: Item ${i} path: ${path}`, "green");
-          paths.add(path);
-        } else {
-          log(`getSelectedMediaFilePaths: Item ${i} returned no path`, "yellow");
-        }
-      } catch (err) {
-        log(`getSelectedMediaFilePaths: Error processing item ${i}: ${(err && err.message) || err}`, "red");
+        if (path) paths.add(path);
+      } catch (_) {
       }
     }
-    
-    log(`getSelectedMediaFilePaths: Found ${paths.size} accessible path(s)`, paths.size > 0 ? "green" : "yellow");
   } catch (err) {
     log(`getSelectedMediaFilePaths error: ${(err && err.message) || err}`, "red");
   }

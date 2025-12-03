@@ -1,304 +1,345 @@
-// src/services/editingActions.js
-/* eslint-disable no-undef */
-
-// Premiere Pro UXP bridge
 const ppro = require("premierepro");
-
-import {
-  getClipDuration,
-  getClipInPoint,
+import { 
+  getClipDuration, 
+  getClipInPoint, 
   getMotionScaleParam,
   validateClip,
-  logClipInfo,
-} from "./clipUtils.js";
+  logClipInfo 
+} from './clipUtils.js';
 
-// ============ LOGGING ============
+// ============ UTILITY ============
 function log(msg, color = "white") {
-  // Keep logs lightweight—Premiere's console can be noisy
-  // Use Premiere's devtools console inside the panel
-  try {
-    console.log("[Edit][" + color + "] " + msg);
-  } catch (_) {}
+  console.log(`[Edit][${color}] ${msg}`);
 }
 
-// ============ UTIL ============
-function escapeForExtendScript(str) {
-  // ensure titles passed into executeScript won't break the string
-  return String(str).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-// ============ HOST UNDO HELPERS ============
-// We must run begin/endUndoGroup in the host scripting context
-// so the History panel shows our custom label (otherwise "Edit Project").
-async function beginUndoGroup(title) {
-  var t = title || "ChatCut Edit";
-  try {
-    if (ppro && ppro.host && ppro.host.executeScript) {
-      await ppro.host.executeScript('app.beginUndoGroup("' + escapeForExtendScript(t) + '")');
-    } else if (typeof app !== "undefined" && app.beginUndoGroup) {
-      // fallback if running in a context where app is exposed
-      app.beginUndoGroup(t);
-    } else {
-      log("Could not access host undo context (beginUndoGroup).", "yellow");
-    }
-  } catch (err) {
-    log("beginUndoGroup failed: " + err, "yellow");
-  }
-}
-
-async function endUndoGroup() {
-  try {
-    if (ppro && ppro.host && ppro.host.executeScript) {
-      await ppro.host.executeScript("app.endUndoGroup()");
-    } else if (typeof app !== "undefined" && app.endUndoGroup) {
-      app.endUndoGroup();
-    } else {
-      log("Could not access host undo context (endUndoGroup).", "yellow");
-    }
-  } catch (err) {
-    log("endUndoGroup failed: " + err, "yellow");
-  }
-}
-
-// ============ GENERIC ACTION EXECUTOR ============
 async function executeAction(project, action) {
-  return new Promise(function (resolve, reject) {
+  return new Promise((resolve, reject) => {
     try {
-      project.lockedAccess(function () {
-        project.executeTransaction(function (compound) {
+      project.lockedAccess(() => {
+        project.executeTransaction((compound) => {
           compound.addAction(action);
         });
         resolve();
       });
     } catch (err) {
-      log("Error executing action: " + err, "red");
+      log(`Error executing action: ${err}`, "red");
       reject(err);
     }
   });
 }
 
 // ============ KEYFRAME HELPERS ============
-// Add a keyframe in ONE transaction (enable time-varying, add keyframe, set interpolation).
-async function addKeyframe(param, project, seconds, value, interpolation) {
-  var interp = interpolation || "BEZIER";
+
+/**
+ * Create a keyframe at a specific time with interpolation
+ * @param {ComponentParam} param - The parameter to add keyframe to
+ * @param {Project} project - Premiere Pro project
+ * @param {number} seconds - Time in seconds
+ * @param {number} value - Keyframe value
+ * @param {string} interpolation - 'LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT'
+ * @returns {Promise<boolean>}
+ */
+async function addKeyframe(param, project, seconds, value, interpolation = 'BEZIER') {
   try {
-    var modeMap = {
-      LINEAR: ppro.Constants.InterpolationMode.LINEAR,
-      BEZIER: ppro.Constants.InterpolationMode.BEZIER,
-      HOLD: ppro.Constants.InterpolationMode.HOLD,
-      EASE_IN: ppro.Constants.InterpolationMode.EASE_IN,
-      EASE_OUT: ppro.Constants.InterpolationMode.EASE_OUT,
-    };
-    var interpMode = modeMap[interp] || ppro.Constants.InterpolationMode.BEZIER;
-    var tt = ppro.TickTime.createWithSeconds(seconds);
+    log(`Creating keyframe at ${seconds.toFixed(2)}s with value ${value}`, "blue");
 
-    await project.lockedAccess(function () {
-      project.executeTransaction(function (compound) {
-        // 1) ensure time-varying
-        compound.addAction(param.createSetTimeVaryingAction(true));
-
-        // 2) create + add keyframe
-        var kf = param.createKeyframe(Number(value));
-        kf.position = tt;
-        compound.addAction(param.createAddKeyframeAction(kf));
-
-        // 3) set interpolation at that time
-        compound.addAction(param.createSetInterpolationAtKeyframeAction(tt, interpMode));
+    // Enable time-varying if not already enabled
+    await project.lockedAccess(async () => {
+      project.executeTransaction((compound) => {
+        const action = param.createSetTimeVaryingAction(true);
+        compound.addAction(action);
       });
     });
+    log(`✓ Time-varying enabled`, "green");
 
-    log("✅ Keyframe @" + seconds.toFixed(2) + "s = " + value, "green");
+    // Add the keyframe
+    await project.lockedAccess(async () => {
+      project.executeTransaction((compound) => {
+        const keyframe = param.createKeyframe(value);
+        keyframe.position = ppro.TickTime.createWithSeconds(seconds);
+        const action = param.createAddKeyframeAction(keyframe);
+        compound.addAction(action);
+      });
+    });
+    log(`✓ Keyframe added at ${seconds.toFixed(2)}s`, "green");
+
+    // Set interpolation mode
+    const modeMap = {
+      'LINEAR': ppro.Constants.InterpolationMode.LINEAR,
+      'BEZIER': ppro.Constants.InterpolationMode.BEZIER,
+      'HOLD': ppro.Constants.InterpolationMode.HOLD,
+      'EASE_IN': ppro.Constants.InterpolationMode.EASE_IN,
+      'EASE_OUT': ppro.Constants.InterpolationMode.EASE_OUT,
+    };
+    const interpMode = modeMap[interpolation] || ppro.Constants.InterpolationMode.BEZIER;
+
+    await project.lockedAccess(async () => {
+      project.executeTransaction((compound) => {
+        const action = param.createSetInterpolationAtKeyframeAction(
+          ppro.TickTime.createWithSeconds(seconds),
+          interpMode
+        );
+        compound.addAction(action);
+      });
+    });
+    log(`✓ Interpolation set to ${interpolation}`, "green");
+
+    log(`✅ Keyframe successfully created at ${seconds.toFixed(2)}s: value=${value}`, "green");
     return true;
   } catch (err) {
-    log("❌ Error adding keyframe: " + (err && err.message ? err.message : err), "red");
+    log(`❌ Error adding keyframe: ${err.message || err}`, "red");
+    console.error("Keyframe creation error details:", err);
     return false;
   }
 }
 
 // ============ ZOOM FUNCTIONS ============
-// Zoom in on a clip (animated or static).
-// If animated=false, we set start & end keyframes to the same endScale for a static look.
-export async function zoomIn(trackItem, options) {
-  options = options || {};
-  var startScale = Object.prototype.hasOwnProperty.call(options, "startScale") ? options.startScale : 100;
-  var endScale = Object.prototype.hasOwnProperty.call(options, "endScale") ? options.endScale : 150;
-  var startTime = Object.prototype.hasOwnProperty.call(options, "startTime") ? options.startTime : 0;
-  var duration = Object.prototype.hasOwnProperty.call(options, "duration") ? options.duration : null;
-  var interpolation = options.interpolation || "BEZIER";
-  var animated = Object.prototype.hasOwnProperty.call(options, "animated") ? options.animated : false; // default static
 
-  // static: same value at both ends
-  var actualStartScale = animated ? startScale : endScale;
-  var actualEndScale = endScale;
+/**
+ * Zoom in on a clip - creates animation from start scale to end scale (or static zoom)
+ * @param {TrackItem} trackItem - The clip to zoom
+ * @param {Object} options - Zoom options
+ * @param {number} options.startScale - Starting scale percentage (default: 100)
+ * @param {number} options.endScale - Ending scale percentage (default: 150)
+ * @param {number} options.startTime - Start time in seconds relative to clip (default: 0)
+ * @param {number} options.duration - Duration of zoom in seconds (default: entire clip)
+ * @param {string} options.interpolation - 'LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT' (default: 'BEZIER')
+ * @param {boolean} options.animated - If true, creates gradual zoom (100%→150%). If false, creates static zoom (150%→150%) (default: true)
+ * @returns {Promise<boolean>}
+ */
+export async function zoomIn(trackItem, options = {}) {
+  const {
+    startScale = 100,
+    endScale = 150,
+    startTime = 0,
+    duration = null,
+    interpolation = 'BEZIER',
+    animated = false  // Default to static zoom (unless user explicitly asks for gradual)
+  } = options;
+  
+  // For static zoom, use the endScale for both start and end
+  const actualStartScale = animated ? startScale : endScale;
+  const actualEndScale = endScale;
 
   try {
-    log("Starting zoomIn...", "blue");
-
-    var validation = await validateClip(trackItem);
+    log(`Starting zoomIn function...`, "blue");
+    
+    // Validate clip
+    const validation = await validateClip(trackItem);
     if (!validation.valid) {
-      log("❌ Cannot zoom: " + validation.reason, "red");
+      log(`❌ Cannot zoom: ${validation.reason}`, "red");
       return false;
     }
+    log(`✓ Clip validation passed`, "green");
 
-    var project = await ppro.Project.getActiveProject();
+    // Get project
+    const project = await ppro.Project.getActiveProject();
     if (!project) {
       log("❌ No active project", "red");
       return false;
     }
+    log(`✓ Project found`, "green");
 
-    var context = await getMotionScaleParam(trackItem, project);
+    // Get Motion Scale parameter
+    log(`Looking for Motion Scale parameter...`, "blue");
+    const context = await getMotionScaleParam(trackItem, project);
     if (!context) {
-      log("❌ Could not get Motion > Scale param", "red");
+      log("❌ Could not get Motion Scale parameter", "red");
       return false;
     }
-    var componentParam = context.componentParam;
+    log(`✓ Motion Scale parameter found`, "green");
 
-    var clipDuration = await getClipDuration(trackItem);
-    var clipStartTime = await getClipInPoint(trackItem);
-    if (clipDuration == null || clipStartTime == null) {
-      log("❌ Could not get clip timing", "red");
+    const { componentParam } = context;
+
+    // Calculate timing
+    const clipDuration = await getClipDuration(trackItem);
+    const clipStartTime = await getClipInPoint(trackItem);
+    
+    if (clipDuration === null || clipStartTime === null) {
+      log(`❌ Could not get clip timing information`, "red");
       return false;
     }
+    
+    const zoomDuration = duration || clipDuration;
+    const absoluteStartTime = clipStartTime + startTime;
+    const absoluteEndTime = absoluteStartTime + zoomDuration;
 
-    var zoomDuration = duration || clipDuration;
-    var absoluteStartTime = clipStartTime + startTime;
-    var absoluteEndTime = absoluteStartTime + zoomDuration;
-
+    // Log different messages for animated vs static zoom
     if (animated) {
-      log(
-        "Applying gradual zoom: " +
-          actualStartScale +
-          "% → " +
-          actualEndScale +
-          "% over " +
-          zoomDuration.toFixed(2) +
-          "s",
-        "blue"
-      );
+      log(`Applying gradual zoom: ${actualStartScale}% → ${actualEndScale}% over ${zoomDuration.toFixed(2)}s`, "blue");
     } else {
-      log("Applying static zoom: " + actualEndScale + "% for " + zoomDuration.toFixed(2) + "s", "blue");
+      log(`Applying static zoom: ${actualEndScale}% throughout entire clip`, "blue");
     }
-
+    log(`Clip starts at: ${clipStartTime.toFixed(2)}s, duration: ${clipDuration.toFixed(2)}s`, "blue");
+    log(`Keyframes at: ${absoluteStartTime.toFixed(2)}s and ${absoluteEndTime.toFixed(2)}s`, "blue");
     await logClipInfo(trackItem);
 
-    // Group as a single history entry (host context)
-    await beginUndoGroup("ChatCut: " + (animated ? "Animated" : "Static") + " Zoom");
-
-    var startOK = await addKeyframe(
-      componentParam,
-      project,
-      absoluteStartTime,
-      actualStartScale,
+    // Create start keyframe
+    log(`Creating start keyframe at ${absoluteStartTime.toFixed(2)}s with value ${actualStartScale}`, "blue");
+    const startSuccess = await addKeyframe(
+      componentParam, 
+      project, 
+      absoluteStartTime, 
+      actualStartScale, 
       interpolation
     );
-    if (!startOK) {
-      await endUndoGroup();
+
+    if (!startSuccess) {
+      log("❌ Failed to create start keyframe", "red");
       return false;
     }
 
-    var endOK = await addKeyframe(componentParam, project, absoluteEndTime, actualEndScale, interpolation);
-    await endUndoGroup();
+    // Create end keyframe
+    log(`Creating end keyframe at ${absoluteEndTime.toFixed(2)}s with value ${actualEndScale}`, "blue");
+    const endSuccess = await addKeyframe(
+      componentParam, 
+      project, 
+      absoluteEndTime, 
+      actualEndScale, 
+      interpolation
+    );
 
-    if (!endOK) return false;
+    if (!endSuccess) {
+      log("❌ Failed to create end keyframe", "red");
+      return false;
+    }
 
     if (animated) {
-      log("✅ Gradual zoom " + actualStartScale + "% → " + actualEndScale + "%", "green");
+      log(`✅ Gradual zoom applied successfully! Scale ${actualStartScale}% → ${actualEndScale}%`, "green");
     } else {
-      log("✅ Static zoom " + actualEndScale + "%", "green");
+      log(`✅ Static zoom applied successfully! Scale ${actualEndScale}% throughout clip`, "green");
     }
     return true;
   } catch (err) {
-    try {
-      await endUndoGroup();
-    } catch (_) {}
-    log("❌ Error in zoomIn: " + (err && err.message ? err.message : err), "red");
+    log(`❌ Error in zoomIn: ${err.message || err}`, "red");
+    console.error("zoomIn error details:", err);
     return false;
   }
 }
 
-export async function zoomOut(trackItem, options) {
-  options = options || {};
-  var rest = {};
-  for (var k in options) if (Object.prototype.hasOwnProperty.call(options, k)) rest[k] = options[k];
-  rest.startScale = Object.prototype.hasOwnProperty.call(options, "startScale") ? options.startScale : 150;
-  rest.endScale = Object.prototype.hasOwnProperty.call(options, "endScale") ? options.endScale : 100;
+/**
+ * Zoom out on a clip - creates animation from larger scale to smaller scale
+ * @param {TrackItem} trackItem - The clip to zoom
+ * @param {Object} options - Zoom options (same as zoomIn)
+ * @returns {Promise<boolean>}
+ */
+export async function zoomOut(trackItem, options = {}) {
+  const {
+    startScale = 150,
+    endScale = 100,
+    ...otherOptions
+  } = options;
 
   log("Applying zoom out...", "blue");
-  return await zoomIn(trackItem, rest);
+  return await zoomIn(trackItem, { startScale, endScale, ...otherOptions });
 }
 
-export async function zoomInBatch(trackItems, options) {
-  options = options || {};
-  log("Applying zoom in to " + trackItems.length + " clip(s)...", "blue");
-  var successful = 0;
-  var failed = 0;
+/**
+ * Apply zoom in to multiple clips
+ * @param {TrackItem[]} trackItems - Array of clips
+ * @param {Object} options - Zoom options
+ * @returns {Promise<{successful: number, failed: number}>}
+ */
+export async function zoomInBatch(trackItems, options = {}) {
+  log(`Applying zoom in to ${trackItems.length} clip(s)...`, "blue");
+  
+  let successful = 0;
+  let failed = 0;
 
-  for (var i = 0; i < trackItems.length; i++) {
-    var ok = await zoomIn(trackItems[i], options);
-    if (ok) successful++;
-    else failed++;
+  for (let i = 0; i < trackItems.length; i++) {
+    const clip = trackItems[i];
+    log(`Processing clip ${i + 1}/${trackItems.length}...`, "blue");
+    
+    const result = await zoomIn(clip, options);
+    if (result) {
+      successful++;
+    } else {
+      failed++;
+    }
   }
-  log("✅ Batch done: " + successful + " ok / " + failed + " failed", "green");
-  return { successful: successful, failed: failed };
+
+  log(`✅ Batch complete: ${successful} successful, ${failed} failed`, "green");
+  return { successful, failed };
 }
 
-export async function zoomOutBatch(trackItems, options) {
-  options = options || {};
-  log("Applying zoom out to " + trackItems.length + " clip(s)...", "blue");
-  var successful = 0;
-  var failed = 0;
+/**
+ * Apply zoom out to multiple clips
+ * @param {TrackItem[]} trackItems - Array of clips
+ * @param {Object} options - Zoom options
+ * @returns {Promise<{successful: number, failed: number}>}
+ */
+export async function zoomOutBatch(trackItems, options = {}) {
+  log(`Applying zoom out to ${trackItems.length} clip(s)...`, "blue");
+  
+  let successful = 0;
+  let failed = 0;
 
-  for (var i = 0; i < trackItems.length; i++) {
-    var ok = await zoomOut(trackItems[i], options);
-    if (ok) successful++;
-    else failed++;
+  for (let i = 0; i < trackItems.length; i++) {
+    const clip = trackItems[i];
+    log(`Processing clip ${i + 1}/${trackItems.length}...`, "blue");
+    
+    const result = await zoomOut(clip, options);
+    if (result) {
+      successful++;
+    } else {
+      failed++;
+    }
   }
-  log("✅ Batch done: " + successful + " ok / " + failed + " failed", "green");
-  return { successful: successful, failed: failed };
+
+  log(`✅ Batch complete: ${successful} successful, ${failed} failed`, "green");
+  return { successful, failed };
 }
 
 // ============ BLUR ============
-export async function applyBlur(trackItem, blurriness) {
-  blurriness = typeof blurriness === "number" ? blurriness : 50;
+/**
+ * Apply blur effect to a single track item
+ * @param {TrackItem} trackItem - The clip to apply blur to
+ * @param {number} blurriness - Blur amount (default: 50)
+ * @returns {Promise<boolean>}
+ */
+export async function applyBlur(trackItem, blurriness = 50) {
   try {
-    var project = await ppro.Project.getActiveProject();
+    const project = await ppro.Project.getActiveProject();
     if (!project) {
       log("No active project", "red");
       return false;
     }
+
     if (!trackItem) {
       log("No track item provided", "red");
       return false;
     }
 
-    var componentChain = await trackItem.getComponentChain();
+    const componentChain = await trackItem.getComponentChain();
     if (!componentChain) {
       log("No component chain", "red");
       return false;
     }
 
-    // Helper: find a param named "Blurriness" across all components
-    async function findBlurrinessParam() {
-      var compCount = componentChain.getComponentCount();
-      for (var ci = 0; ci < compCount; ci++) {
-        var comp = componentChain.getComponentAtIndex(ci);
-        var paramCount = comp.getParamCount();
-        for (var pi = 0; pi < paramCount; pi++) {
-          var param = await comp.getParam(pi);
-          var displayName = param && param.displayName ? param.displayName : "";
-          var name = displayName.trim().toLowerCase();
-          if (name === "blurriness") return param;
+    // Helper to find a param named "Blurriness" across all components
+    const findBlurrinessParam = async () => {
+      const compCount = componentChain.getComponentCount();
+      for (let ci = 0; ci < compCount; ci++) {
+        const comp = componentChain.getComponentAtIndex(ci);
+        const paramCount = comp.getParamCount();
+        for (let pi = 0; pi < paramCount; pi++) {
+          const param = await comp.getParam(pi);
+          const name = ((param && param.displayName) || "").trim().toLowerCase();
+          if (name === "blurriness") {
+            return param;
+          }
         }
       }
       return null;
-    }
+    };
 
-    var blurParam = await findBlurrinessParam();
+    // Try to find existing "Blurriness"
+    let blurParam = await findBlurrinessParam();
 
     // If not found, append Gaussian Blur and try again
     if (!blurParam) {
-      var blurComponent = await ppro.VideoFilterFactory.createComponent("AE.ADBE Gaussian Blur 2");
-      var appendAction = await componentChain.createAppendComponentAction(blurComponent);
+      const blurComponent = await ppro.VideoFilterFactory.createComponent("AE.ADBE Gaussian Blur 2");
+      const appendAction = await componentChain.createAppendComponentAction(blurComponent);
       await executeAction(project, appendAction);
       blurParam = await findBlurrinessParam();
     }
@@ -309,56 +350,48 @@ export async function applyBlur(trackItem, blurriness) {
     }
 
     // Set value via keyframe (required by createSetValueAction)
-    var kf = blurParam.createKeyframe(Number(blurriness));
-    var setAction = blurParam.createSetValueAction(kf, true);
+    const keyframe = blurParam.createKeyframe(Number(blurriness));
+    const setAction = blurParam.createSetValueAction(keyframe, true);
     await executeAction(project, setAction);
 
-    log("✅ Blur (" + blurriness + ") applied", "green");
+    log(`✅ Blur effect (${blurriness}) applied`, "green");
     return true;
+
   } catch (err) {
-    log("Error applying blur: " + err, "red");
+    log(`Error applying blur: ${err}`, "red");
     return false;
   }
 }
 
 // ============ TRANSITIONS ============
-export async function applyTransition(
-  item,
-  transitionName,
-  durationSeconds,
-  applyToStart,
-  transitionAlignment
-) {
-  durationSeconds = typeof durationSeconds === "number" ? durationSeconds : 1.0;
-  applyToStart = typeof applyToStart === "boolean" ? applyToStart : true;
-  transitionAlignment = typeof transitionAlignment === "number" ? transitionAlignment : 0.5;
-
+export async function applyTransition(item, transitionName, durationSeconds = 1.0, applyToStart = true, transitionAllignment = 0.5) {
   try {
-    var matchNameList = await ppro.TransitionFactory.getVideoTransitionMatchNames();
-    var matched = matchNameList.find(function (n) {
-      return n.toLowerCase() === transitionName.toLowerCase();
-    });
+    const matchNameList = await ppro.TransitionFactory.getVideoTransitionMatchNames();
+    console.log("Available transitions:", matchNameList);
+    const matched = matchNameList.find(n => n.toLowerCase() === transitionName.toLowerCase());
+
     if (!matched) {
-      log("Transition not found: " + transitionName, "red");
+      log(`Transition not found: ${transitionName}`, "red");
       return false;
     }
 
-    var videoTransition = await ppro.TransitionFactory.createVideoTransition(matched);
-    var opts = new ppro.AddTransitionOptions();
+    const videoTransition = await ppro.TransitionFactory.createVideoTransition(matched);
+    const opts = new ppro.AddTransitionOptions();
+    console.log("AddTransitionOptions created:", opts);
     opts.setApplyToStart(applyToStart);
-    var time = await ppro.TickTime.createWithSeconds(durationSeconds);
+    const time = await ppro.TickTime.createWithSeconds(durationSeconds);
     opts.setDuration(time);
     opts.setForceSingleSided(false);
-    opts.setTransitionAlignment(transitionAlignment);
+    opts.setTransitionAlignment(transitionAllignment);
 
-    var project = await ppro.Project.getActiveProject();
-    var action = await item.createAddVideoTransitionAction(videoTransition, opts);
+    const project = await ppro.Project.getActiveProject();
+    const action = await item.createAddVideoTransitionAction(videoTransition, opts);
     await executeAction(project, action);
 
-    log("Transition applied: " + matched, "green");
+    log(`Transition applied: ${matched}`, "green");
     return true;
   } catch (err) {
-    log("Error applying transition: " + err, "red");
+    log(`Error applying transition: ${err}`, "red");
     return false;
   }
 }
@@ -366,38 +399,40 @@ export async function applyTransition(
 // ============ FILTERS/EFFECTS ============
 export async function applyRandomFilter(item) {
   try {
-    var matchNames = await ppro.VideoFilterFactory.getMatchNames();
-    if (!matchNames || !matchNames.length) {
+    const matchNames = await ppro.VideoFilterFactory.getMatchNames();
+    console.log("Available video filters:", matchNames);
+    if (!matchNames || matchNames.length === 0) {
       log("No video filters available", "red");
       return false;
     }
 
-    var randomName = matchNames[Math.floor(Math.random() * matchNames.length)];
-    var component = await ppro.VideoFilterFactory.createComponent(randomName);
-    var componentChain = await item.getComponentChain();
-    var project = await ppro.Project.getActiveProject();
-    var action = await componentChain.createAppendComponentAction(component);
+    const randomName = matchNames[Math.floor(Math.random() * matchNames.length)];
+    const component = await ppro.VideoFilterFactory.createComponent(randomName);
+    const componentChain = await item.getComponentChain();
+    const project = await ppro.Project.getActiveProject();
+    const action = await componentChain.createAppendComponentAction(component);
     await executeAction(project, action);
 
-    log("Filter applied: " + randomName, "green");
+    log(`Filter applied: ${randomName}`, "green");
     return true;
   } catch (err) {
-    log("Error applying random filter: " + err, "red");
+    log(`Error applying filter: ${err}`, "red");
     return false;
   }
 }
 
 export async function applyFilter(item, filterName) {
   try {
-    var matchNames = await ppro.VideoFilterFactory.getMatchNames();
-    if (matchNames.indexOf(filterName) === -1) {
-      log("Filter not found: " + filterName, "red");
+    const matchNames = await ppro.VideoFilterFactory.getMatchNames();
+    console.log("Available video filters:", matchNames);
+    if (!matchNames.includes(filterName)) {
+      log(`Filter not found: ${filterName}`, "red");
       return false;
     }
-    var component = await ppro.VideoFilterFactory.createComponent(filterName);
-    var componentChain = await item.getComponentChain();
-    var project = await ppro.Project.getActiveProject();
-    var action = await componentChain.createAppendComponentAction(component);
+    const component = await ppro.VideoFilterFactory.createComponent(filterName);
+    const componentChain = await item.getComponentChain();
+    const project = await ppro.Project.getActiveProject();
+    const action = await componentChain.createAppendComponentAction(component);
     await executeAction(project, action);
     const compCount = componentChain.getComponentCount();
     console.log("Component count after adding filter:", compCount);
@@ -415,10 +450,10 @@ export async function applyFilter(item, filterName) {
       }
     }
 
-    log("Filter applied: " + filterName, "green");
+    log(`Filter applied: ${filterName}`, "green");
     return true;
   } catch (err) {
-    log("Error applying filter: " + err, "red");
+    log(`Error applying filter: ${err}`, "red");
     return false;
   }
 }
@@ -713,40 +748,42 @@ export async function adjustVolume(audioClip, volumeDb = 0) {
  * Simple test - zoom in on first selected clip
  */
 export async function testZoom() {
-  log("🧪 Testing zoom...", "blue");
-
-  var project = await ppro.Project.getActiveProject();
+  log("🧪 Testing zoom functionality...", "blue");
+  
+  const project = await ppro.Project.getActiveProject();
   if (!project) {
     log("No active project", "red");
     return;
   }
 
-  var sequence = await project.getActiveSequence();
+  const sequence = await project.getActiveSequence();
   if (!sequence) {
     log("No sequence found", "red");
     return;
   }
 
-  var selection = await sequence.getSelection();
+  const selection = await sequence.getSelection();
   if (!selection) {
     log("No selection found", "red");
     return;
   }
 
-  var trackItems = await selection.getTrackItems();
-  if (!trackItems || !trackItems.length) {
-    log("❌ No clips selected. Select a clip and retry.", "red");
+  const trackItems = await selection.getTrackItems();
+  if (!trackItems || trackItems.length === 0) {
+    log("❌ No clips selected. Please select a clip on the timeline.", "red");
     return;
   }
 
-  var result = await zoomInBatch(trackItems, {
+  log(`Found ${trackItems.length} selected clip(s)`, "blue");
+
+  // Test zoom in on all selected clips
+  const result = await zoomInBatch(trackItems, {
     startScale: 100,
     endScale: 150,
-    interpolation: "BEZIER",
-    animated: true,
+    interpolation: 'BEZIER'
   });
 
-  log("🎉 Test complete! " + result.successful + " clips zoomed successfully.", "green");
+  log(`🎉 Test complete! ${result.successful} clips zoomed successfully.`, "green");
 }
 
 // ============ PARAMETER MODIFICATION ============

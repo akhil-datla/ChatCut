@@ -43,49 +43,26 @@ module.exports = {
   },
   plugins: [
     //new CleanWebpackPlugin(),
-    new CopyPlugin([
-      {
-        from: "plugin",
-        to: ".",
-        ignore: ["index.html", "manifest.json"], // These will be copied from dist
-      },
-    ], {
+    new CopyPlugin(["plugin"], {
       copyUnmodified: true,
     }),
-    // Copy built files back to plugin folder for development
+    // Copy built files back to plugin folder after build
     {
       apply: (compiler) => {
-        compiler.hooks.afterEmit.tap("CopyToPlugin", (compilation) => {
-          const fs = require("fs");
-          const path = require("path");
-          const distPath = path.resolve(__dirname, "dist");
-          const pluginPath = path.resolve(__dirname, "plugin");
-          
-          // Copy index.js
-          const indexJs = path.join(distPath, "index.js");
-          const pluginIndexJs = path.join(pluginPath, "index.js");
-          if (fs.existsSync(indexJs)) {
-            fs.copyFileSync(indexJs, pluginIndexJs);
-            console.log("Copied index.js to plugin folder");
-          }
-          
-          // Copy index.html
-          const indexHtml = path.join(distPath, "index.html");
-          const pluginIndexHtml = path.join(pluginPath, "index.html");
-          if (fs.existsSync(indexHtml)) {
-            fs.copyFileSync(indexHtml, pluginIndexHtml);
-            console.log("Copied index.html to plugin folder");
-          }
-          
-          // Copy manifest.json
-          const manifest = path.join(distPath, "manifest.json");
-          const pluginManifest = path.join(pluginPath, "manifest.json");
-          if (fs.existsSync(manifest)) {
-            fs.copyFileSync(manifest, pluginManifest);
-            console.log("Copied manifest.json to plugin folder");
-          }
+        compiler.hooks.afterEmit.tap('CopyToPlugin', () => {
+          const fs = require('fs');
+          const path = require('path');
+          const distPath = path.resolve(__dirname, 'dist');
+          const pluginPath = path.resolve(__dirname, 'plugin');
+          ['index.js', 'index.html', 'manifest.json'].forEach(file => {
+            const src = path.join(distPath, file);
+            const dest = path.join(pluginPath, file);
+            if (fs.existsSync(src)) {
+              fs.copyFileSync(src, dest);
+            }
+          });
         });
-      },
+      }
     },
   ],
 };

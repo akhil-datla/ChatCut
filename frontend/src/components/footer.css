@@ -247,10 +247,6 @@
   margin-left: 8px;
 }
 
-.chat-input::placeholder {
-  color: #aaa;
-}
-
 .chat-input:focus {
   outline: none;
   border: 2px solid var(--color-accent-blue);
@@ -266,6 +262,10 @@
 
 .chat-input:focus::placeholder {
   opacity: 0.6;
+}
+
+.chat-input::placeholder {
+  color: #aaa;
 }
 
 .send-btn { 
