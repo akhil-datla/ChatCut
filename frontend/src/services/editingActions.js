@@ -445,7 +445,7 @@ export async function applyFilter(item, filterName) {
       for (let pi = 0; pi < paramCount; pi++) {
         const param = await comp.getParam(pi);
         console.log(" Param details:", param);
-        const name = (param?.displayName || "").trim().toLowerCase();
+        const name = (param && param.displayName ? param.displayName : "").trim().toLowerCase();
         console.log("  Param:", name);
       }
     }
@@ -820,7 +820,7 @@ export async function getEffectParameters(trackItem) {
       const paramCount = comp.getParamCount();
       for (let pi = 0; pi < paramCount; pi++) {
         const param = await comp.getParam(pi);
-        const paramName = (param?.displayName || "").trim();
+        const paramName = (param && param.displayName ? param.displayName : "").trim();
         
         // Skip empty params
         if (!paramName) continue;

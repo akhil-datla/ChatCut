@@ -6,6 +6,7 @@ import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
 import { getEffectParameters } from "../services/editingActions";
 import { processPrompt, processMedia } from "../services/backendClient";
 import { getSelectedMediaFilePaths, replaceClipMedia } from "../services/clipUtils";
+import { capturePreviousState, executeUndo } from "../services/undoService";
 
 const ppro = require("premierepro");
 
@@ -19,6 +20,10 @@ export const Container = () => {
   
   // Toggle for process media mode (send file paths to AI)
   const [processMediaMode, setProcessMediaMode] = useState(false);
+
+  // Track ChatCut edits: history of edits and undos performed
+  const [editHistory, setEditHistory] = useState([]); // Array of { actionName, trackItems, previousState, parameters }
+  const [chatCutUndosCount, setChatCutUndosCount] = useState(0);
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -37,7 +42,57 @@ export const Container = () => {
     setMessage([]);
   };
 
-  
+  // Undo handler: only undo ChatCut edits using custom undo service
+  const handleUndo = async () => {
+    console.log("[Undo] handleUndo called - current state:", {
+      editHistoryLength: editHistory.length,
+      chatCutUndosCount,
+      editHistory: editHistory.map(e => e.actionName)
+    });
+    
+    const remainingEdits = editHistory.length - chatCutUndosCount;
+    
+    if (remainingEdits <= 0) {
+      writeToConsole("ℹ️ No ChatCut edits to undo.");
+      writeToConsole(`💡 Tip: Make a new ChatCut edit first, then you can undo it.`);
+      console.log("[Undo] No remaining ChatCut edits to undo");
+      return;
+    }
+    
+    // Get the edit to undo (most recent one that hasn't been undone)
+    const editIndex = editHistory.length - chatCutUndosCount - 1;
+    const historyEntry = editHistory[editIndex];
+    
+    if (!historyEntry) {
+      writeToConsole("❌ Could not find edit history entry to undo.");
+      console.error("[Undo] historyEntry is null/undefined at index:", editIndex);
+      return;
+    }
+    
+    writeToConsole(`🔄 Attempting to undo ChatCut edit ${chatCutUndosCount + 1} of ${editHistory.length} (${historyEntry.actionName})...`);
+    
+    try {
+      const result = await executeUndo(historyEntry);
+      if (result.successful > 0) {
+        // Update undo count after successful undo
+        setChatCutUndosCount(prev => {
+          const newCount = prev + 1;
+          console.log("[Undo] Undo count updated to:", newCount);
+          return newCount;
+        });
+        writeToConsole(`↩️ Undo completed! Reversed ${result.successful} clip(s).`);
+        if (result.failed > 0) {
+          writeToConsole(`⚠️ Failed to undo ${result.failed} clip(s).`);
+        }
+      } else {
+        writeToConsole("❌ Undo failed - could not reverse the edit.");
+        console.error("[Undo] executeUndo returned no successful undos");
+      }
+    } catch (err) {
+      writeToConsole(`❌ Undo failed with error: ${err.message || err}`);
+      console.error("[Undo] executeUndo threw exception:", err);
+    }
+  };
 
   const onSend = (text, contextParams = null) => {
     if (!text || !text.trim()) return;
@@ -314,17 +369,17 @@ export const Container = () => {
       
       // Show AI confirmation
       // Support single-action responses (legacy) and multi-action responses (new)
-      if (aiResponse.action) {
-        writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
-        if (aiResponse.message) {
-          writeToConsole(`💬 AI message: ${aiResponse.message}`);
-        }
-      } else if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
+      if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
         writeToConsole(`✨ AI extracted ${aiResponse.actions.length} actions`);
         if (aiResponse.message) writeToConsole(`💬 AI message: ${aiResponse.message}`);
         for (let i = 0; i < aiResponse.actions.length; i++) {
           const a = aiResponse.actions[i];
           writeToConsole(`  • ${a.action} ${JSON.stringify(a.parameters || {})}`);
+        }
+      } else if (aiResponse.action) {
+        writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
+        if (aiResponse.message) {
+          writeToConsole(`💬 AI message: ${aiResponse.message}`);
         }
       } else {
         // Handle special non-action responses
@@ -345,6 +400,18 @@ export const Container = () => {
         return;
       }
       
+      // Capture previous state before making the edit (for undo)
+      let previousState = null;
+      try {
+        writeToConsole("📸 Capturing previous state for undo...");
+        const actionName = aiResponse.action || (aiResponse.actions && aiResponse.actions[0] && aiResponse.actions[0].action);
+        previousState = await capturePreviousState(trackItems, actionName);
+        writeToConsole(`✓ State captured: ${previousState ? 'success' : 'empty'}`);
+      } catch (err) {
+        console.error("[Edit] Error capturing previous state (non-blocking):", err);
+        writeToConsole(`⚠️ Could not capture state for undo: ${err.message || err}`);
+      }
+      
       // Dispatch the action(s) with extracted parameters
       let dispatchResult;
       const isAudioAction = aiResponse.action === 'adjustVolume' || aiResponse.action === 'applyAudioFilter';
@@ -354,18 +421,71 @@ export const Container = () => {
         dispatchResult = await dispatchActions(aiResponse.actions, trackItems);
         const { summary } = dispatchResult;
         if (summary.successful > 0) {
+          // Store edit in history for undo (use first action for history)
+          const historyEntry = {
+            actionName: aiResponse.actions[0].action,
+            trackItems: trackItems,
+            previousState: previousState,
+            parameters: aiResponse.actions[0].parameters || {}
+          };
+          
+          const currentUndoCount = chatCutUndosCount;
+          setEditHistory(prev => {
+            let newHistory;
+            if (currentUndoCount > 0) {
+              newHistory = prev.slice(0, prev.length - currentUndoCount);
+              newHistory = [...newHistory, historyEntry];
+            } else {
+              newHistory = [...prev, historyEntry];
+            }
+            return newHistory;
+          });
+          
+          if (currentUndoCount > 0) {
+            setChatCutUndosCount(0);
+          }
+          
           writeToConsole(`✅ Actions applied successfully to ${summary.successful} clip(s)!`);
           if (summary.failed > 0) writeToConsole(`⚠️ Failed on ${summary.failed} clip(s)`);
+          writeToConsole(`ℹ️ Use the panel's Undo button to revert ChatCut edits only.`);
         } else {
           writeToConsole(`❌ Failed to apply actions. Check console for errors.`);
         }
       } else {
         // Single-action (legacy) - with separate audio/video error handling
+        writeToConsole(`🚀 Dispatching action: ${aiResponse.action} with params: ${JSON.stringify(aiResponse.parameters || {})}`);
         dispatchResult = await dispatchAction(aiResponse.action, trackItems, aiResponse.parameters || {});
         const result = dispatchResult;
+        writeToConsole(`📊 Dispatch result: successful=${result.successful}, failed=${result.failed}`);
         
         // Report results with separate handling for audio vs video
         if (result.successful > 0) {
+          // Store edit in history for undo
+          const historyEntry = {
+            actionName: aiResponse.action,
+            trackItems: trackItems,
+            previousState: previousState,
+            parameters: aiResponse.parameters || {}
+          };
+          
+          const currentUndoCount = chatCutUndosCount;
+          setEditHistory(prev => {
+            let newHistory;
+            if (currentUndoCount > 0) {
+              console.log("[Edit] Resetting undo count, trimming", currentUndoCount, "undone edits");
+              newHistory = prev.slice(0, prev.length - currentUndoCount);
+              newHistory = [...newHistory, historyEntry];
+            } else {
+              newHistory = [...prev, historyEntry];
+            }
+            console.log("[Edit] Edit history updated, total edits:", newHistory.length);
+            return newHistory;
+          });
+          
+          if (currentUndoCount > 0) {
+            setChatCutUndosCount(0);
+          }
+          
           if (isAudioAction) {
             writeToConsole(`✅ Audio effect applied successfully to ${result.successful} clip(s)!`);
           } else {
@@ -378,6 +498,7 @@ export const Container = () => {
               writeToConsole(`⚠️ Failed on ${result.failed} clip(s)`);
             }
           }
+          writeToConsole(`ℹ️ Use the panel's Undo button to revert ChatCut edits only.`);
         } else {
           if (isAudioAction) {
             writeToConsole(`❌ Audio effect failed. Make sure you have audio clips selected and the requested audio filter is available.`);
@@ -414,10 +535,39 @@ export const Container = () => {
     }
   }
 
+  // Calculate canUndo value
+  const canUndo = editHistory.length > chatCutUndosCount;
+  
+  // Debug logging
+  console.log("[Container] Render - canUndo calculation:", {
+    editHistoryLength: editHistory.length,
+    chatCutUndosCount,
+    canUndo,
+    editHistory: editHistory.map(e => e.actionName)
+  });
+
   return (
     <>
       <div className="plugin-container">
-        <Header />
+        <Header
+          onUndo={handleUndo}
+          canUndo={canUndo}
+        />
+        {/* Debug info - always show to help diagnose undo issues */}
+        <div style={{ 
+          fontSize: '10px', 
+          opacity: 0.7, 
+          padding: '4px', 
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          backgroundColor: editHistory.length > chatCutUndosCount ? 'rgba(0,255,0,0.1)' : 'rgba(255,0,0,0.1)'
+        }}>
+          ChatCut Edits: {editHistory.length} | Undone: {chatCutUndosCount} | Undo Available: {editHistory.length > chatCutUndosCount ? '✅ Yes' : '❌ No'}
+          {editHistory.length > 0 && (
+            <span style={{ marginLeft: '8px', fontSize: '9px' }}>
+              (Last: {editHistory[editHistory.length - 1] && editHistory[editHistory.length - 1].actionName || 'N/A'})
+            </span>
+          )}
+        </div>
         <Content message={message} />
         <Footer 
           writeToConsole={writeToConsole} 
