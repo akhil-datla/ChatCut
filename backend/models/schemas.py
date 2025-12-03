@@ -42,24 +42,19 @@ class ProcessMediaResponse(BaseModel):
     task_id: Optional[str] = None
 
 
-class ColabProcessRequest(BaseModel):
-    """Request model for Colab video processing"""
-    file_path: str
+class ProcessObjectTrackingRequest(BaseModel):
+    """Request model for processing media file with object tracking"""
+    filePath: str
     prompt: str
-    effect_type: Optional[str] = None
 
 
-class ColabProcessResponse(BaseModel):
-    """Response model for Colab processing"""
-    status: str = "processing"
+class ProcessObjectTrackingResponse(BaseModel):
+    """Response model for object tracking processing"""
+    action: Optional[str] = None
+    parameters: Dict[str, Any] = {}
+    confidence: float = 0.0
     message: str = ""
     error: Optional[str] = None
-    original_path: Optional[str] = None
-    output_path: Optional[str] = None
-    progress: Optional[int] = None
-
-
-class ColabStartRequest(BaseModel):
-    """Request model for starting Colab session"""
-    ngrok_url: Optional[str] = None 
+    tracked_objects: Optional[List[Dict[str, Any]]] = None  # List of tracked objects with positions
+    tracking_data: Optional[Dict[str, Any]] = None  # Frame-by-frame tracking data
 

@@ -17,8 +17,8 @@ export const Container = () => {
   // sequential reply index (loops when reaching the end)
   const replyIndexRef = useRef(0);
   
-  // Toggle for process media mode (send file paths to AI)
-  const [processMediaMode, setProcessMediaMode] = useState(false);
+  // Editing mode: "none" | "object_tracking" | "ai_video"
+  const [editingMode, setEditingMode] = useState("none");
 
   // Colab mode state
   const [colabMode, setColabMode] = useState(false);
@@ -79,6 +79,11 @@ export const Container = () => {
       }
     }
     return false;
+  };
+
+  const handleUndo = () => {
+    // Placeholder for teammate's undo implementation
+    console.log("[Container] Undo requested - functionality not yet implemented");
   };
 
   const onSend = (text, contextParams = null) => {
@@ -301,6 +306,7 @@ export const Container = () => {
         }
         
         // Determine which backend call to use based on mode
+        // Colab mode takes precedence
         if (colabMode) {
           // Colab object tracking mode with SSE streaming
           if (!colabUrl || !colabUrl.trim()) {
@@ -362,7 +368,7 @@ export const Container = () => {
           }
           return; // Don't continue to standard AI processing
 
-        } else if (processMediaMode) {
+        } else if (editingMode === "ai_video") {
           const duration = await trackItems[0].getDuration();
           console.log("Clip duration (seconds):", duration.seconds);
           if (duration.seconds > 5){
@@ -388,8 +394,12 @@ export const Container = () => {
           if (aiResponse.output_path && aiResponse.original_path) {
             await replaceClipWithProcessed(trackItems, aiResponse, writeToConsole);
           }
+        } else if (editingMode === "object_tracking") {
+          // Object tracking mode - not yet implemented (teammate will add backend)
+          writeToConsole("⚠️ Object Tracking Mode is not yet available. This feature will be implemented soon.");
+          return;
         } else {
-          // Standard prompt-only processing
+          // Regular native edits mode (editingMode === "none")
           aiResponse = await processPrompt(text, contextParams);
         }
       } else {
@@ -510,8 +520,9 @@ export const Container = () => {
           writeToConsole={writeToConsole}
           clearConsole={clearConsole}
           onSend={onSend}
-          processMediaMode={processMediaMode}
-          setProcessMediaMode={setProcessMediaMode}
+          onUndo={handleUndo}
+          editingMode={editingMode}
+          setEditingMode={setEditingMode}
           colabMode={colabMode}
           setColabMode={setColabMode}
           colabUrl={colabUrl}
