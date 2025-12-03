@@ -17,8 +17,8 @@ export const Container = () => {
   // sequential reply index (loops when reaching the end)
   const replyIndexRef = useRef(0);
   
-  // Toggle for process media mode (send file paths to AI)
-  const [processMediaMode, setProcessMediaMode] = useState(false);
+  // Editing mode: "none" | "object_tracking" | "ai_video"
+  const [editingMode, setEditingMode] = useState("none");
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -37,7 +37,10 @@ export const Container = () => {
     setMessage([]);
   };
 
-  
+  const handleUndo = () => {
+    // Placeholder for teammate's undo implementation
+    console.log("[Container] Undo requested - functionality not yet implemented");
+  };
 
   const onSend = (text, contextParams = null) => {
     if (!text || !text.trim()) return;
@@ -251,8 +254,8 @@ export const Container = () => {
           writeToConsole(`📋 With context: ${Object.keys(contextParams).length} parameters`);
         }
         
-        // Determine which backend call to use based on processMediaMode
-        if (processMediaMode) {
+        // Route based on editing mode
+        if (editingMode === "ai_video") {
           const duration = await trackItems[0].getDuration();
           console.log("Clip duration (seconds):", duration.seconds);
           if (duration.seconds > 5){
@@ -300,8 +303,12 @@ export const Container = () => {
               }
             }
           }
+        } else if (editingMode === "object_tracking") {
+          // Object tracking mode - not yet implemented (teammate will add backend)
+          writeToConsole("⚠️ Object Tracking Mode is not yet available. This feature will be implemented soon.");
+          return;
         } else {
-          // Standard prompt-only processing
+          // Regular native edits mode (editingMode === "none")
           aiResponse = await processPrompt(text, contextParams);
         }
       } else {
@@ -394,8 +401,9 @@ export const Container = () => {
           writeToConsole={writeToConsole} 
           clearConsole={clearConsole} 
           onSend={onSend}
-          processMediaMode={processMediaMode}
-          setProcessMediaMode={setProcessMediaMode}
+          onUndo={handleUndo}
+          editingMode={editingMode}
+          setEditingMode={setEditingMode}
           fetchAvailableEffects={fetchAvailableEffects}
         />
       </div>

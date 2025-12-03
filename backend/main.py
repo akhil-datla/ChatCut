@@ -9,11 +9,14 @@ from models.schemas import (
     ProcessPromptRequest, 
     ProcessPromptResponse,
     ProcessMediaRequest,
-    ProcessMediaResponse
+    ProcessMediaResponse,
+    ProcessObjectTrackingRequest,
+    ProcessObjectTrackingResponse
 )
 from services.ai_service import process_prompt
 
 from services.providers.video_provider import process_media
+from services.providers.object_tracking_provider import process_object_tracking
 
 # Load environment variables
 load_dotenv()
@@ -101,6 +104,49 @@ async def process_media_files(request: ProcessMediaRequest):
     print(f"[Media] Result: action={ai_result.get('action')}")
     
     return ProcessMediaResponse(**ai_result)
+
+
+@app.post("/api/process-object-tracking", response_model=ProcessObjectTrackingResponse)
+async def process_object_tracking_endpoint(request: ProcessObjectTrackingRequest):
+    """
+    Process media file with object tracking capabilities.
+    This endpoint will handle object detection and tracking requests.
+    """
+    print(f"[Object Tracking] Processing file: {request.filePath}")
+    print(f"[Object Tracking] Prompt: {request.prompt}")
+    
+    # Validate file access
+    file_path = request.filePath
+    try:
+        if not Path(file_path).exists():
+            return ProcessObjectTrackingResponse(
+                action=None,
+                message=f"File not found: {file_path}",
+                error="FILE_NOT_FOUND"
+            )
+        
+        if not os.access(file_path, os.R_OK):
+            return ProcessObjectTrackingResponse(
+                action=None,
+                message=f"Cannot read file: {file_path}",
+                error="FILE_ACCESS_ERROR"
+            )
+        
+        print(f"  ✓ {Path(file_path).name}")
+        
+    except Exception as e:
+        print(f"  ✗ {file_path}: {e}")
+        return ProcessObjectTrackingResponse(
+            action=None,
+            message=f"Error accessing file: {str(e)}",
+            error="FILE_ACCESS_ERROR"
+        )
+    
+    # Process with object tracking provider
+    result = process_object_tracking(request.prompt, file_path)
+    print(f"[Object Tracking] Result: action={result.get('action')}")
+    
+    return ProcessObjectTrackingResponse(**result)
 
 
 @app.get("/health")

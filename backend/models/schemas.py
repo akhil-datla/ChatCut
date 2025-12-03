@@ -39,5 +39,22 @@ class ProcessMediaResponse(BaseModel):
     error: Optional[str] = None
     original_path: Optional[str] = None
     output_path: Optional[str] = None
-    task_id: Optional[str] = None 
+    task_id: Optional[str] = None
+
+
+class ProcessObjectTrackingRequest(BaseModel):
+    """Request model for processing media file with object tracking"""
+    filePath: str
+    prompt: str
+
+
+class ProcessObjectTrackingResponse(BaseModel):
+    """Response model for object tracking processing"""
+    action: Optional[str] = None
+    parameters: Dict[str, Any] = {}
+    confidence: float = 0.0
+    message: str = ""
+    error: Optional[str] = None
+    tracked_objects: Optional[List[Dict[str, Any]]] = None  # List of tracked objects with positions
+    tracking_data: Optional[Dict[str, Any]] = None  # Frame-by-frame tracking data
 
