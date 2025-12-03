@@ -1,16 +1,32 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* 
+ * Global styles for ChatCut UXP Plugin
+ * Using pure CSS (no Tailwind) for UXP compatibility
+ * UXP has limited CSS support, so we use only well-supported properties
+ */
 
+/* CSS Variables - Centralized color and spacing system */
 :root {
+  /* Base Colors */
   --color-bg-dark: #1e1e1e;
   --color-text-offwhite: #f0f0f0;
   --color-border-light: #444444;
   --color-accent-blue: #0078d4;
+  
+  /* Chat Bubble Colors */
   --color-bubble-user-bg: rgba(0,120,255,0.18);
   --color-bubble-user-text: #d6f0ff;
   --color-bubble-bot-bg: #2d2d2d;
   --color-bubble-bot-text: #f0f0f0;
+  
+  /* Common UI Colors */
+  --color-bg-container: rgba(30, 30, 30, 0.95);
+  --color-border-subtle: rgba(255, 255, 255, 0.1);
+  --color-shadow-dark: rgba(0, 0, 0, 0.3);
+  
+  /* Status Colors */
+  --color-success: #4caf50;
+  --color-error: #f44336;
+  --color-warning: #ff9800;
 }
 
 body {

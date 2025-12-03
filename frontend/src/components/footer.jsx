@@ -2,6 +2,148 @@ import React, { useEffect, useRef } from "react";
 import "./footer.css";
 import { checkColabHealth } from "../services/backendClient";
 
+/**
+ * Mode Icon Components - SVG Fallbacks
+ * Since Spectrum UXP icons may not load reliably, we use SVG components
+ * Using fill="white" directly instead of currentColor for UXP compatibility
+ * IMPORTANT: UXP requires xmlns attribute on all inline SVGs for proper rendering
+ */
+const EditIcon = () => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg"
+    className="mode-icon-svg" 
+    viewBox="0 0 24 24" 
+    width="20" 
+    height="20" 
+    fill="white"
+    role="img"
+    aria-hidden="true"
+  >
+    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+  </svg>
+);
+
+const BullseyeIcon = () => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg"
+    className="mode-icon-svg" 
+    viewBox="0 0 24 24" 
+    width="20" 
+    height="20" 
+    fill="white"
+    role="img"
+    aria-hidden="true"
+  >
+    {/* Outer circle */}
+    <circle cx="12" cy="12" r="8" fill="none" stroke="white" strokeWidth="1.5"/>
+    {/* Middle circle */}
+    <circle cx="12" cy="12" r="5" fill="none" stroke="white" strokeWidth="1.5"/>
+    {/* Center dot */}
+    <circle cx="12" cy="12" r="2" fill="white"/>
+  </svg>
+);
+
+const MagicWandIcon = () => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg"
+    className="mode-icon-svg" 
+    viewBox="0 0 24 24" 
+    width="20" 
+    height="20" 
+    fill="white"
+    role="img"
+    aria-hidden="true"
+  >
+    {/* Minimal diagonal wand (no tip shape) */}
+    <rect
+      x="0.4"
+      y="16.8"
+      width="16"
+      height="1.6"
+      rx="0.8"
+      fill="white"
+      transform="rotate(-55 4 14.8)"
+    />
+
+    {/* Four-point twinkle star 1 (left) */}
+    <path
+      d="M6.5 4
+         L7.1 6
+         L9 6.5
+         L7.1 7
+         L6.5 9
+         L5.9 7
+         L4 6.5
+         L5.9 6
+         Z"
+      fill="white"
+    />
+
+    {/* Four-point twinkle star 2 (upper right) — moved farther from wand tip */}
+    <path
+      d="M21.0 0.4
+         L21.6 2.2
+         L23.4 2.8
+         L21.6 3.4
+         L21.0 5.2
+         L20.4 3.4
+         L18.6 2.8
+         L20.4 2.2
+         Z"
+      fill="white"
+    />
+
+    {/* Four-point twinkle star 3 (right / mid) */}
+    <path
+      d="M18.2 9.5
+         L18.7 11.1
+         L20.3 11.6
+         L18.7 12.1
+         L18.2 13.7
+         L17.7 12.1
+         L16.1 11.6
+         L17.7 11.1
+         Z"
+      fill="white"
+    />
+
+    {/* Four-point twinkle star 4 (above wand body) */}
+    <path
+      d="M10.2 0.2
+         L10.7 1.6
+         L12.1 2.1
+         L10.7 2.6
+         L10.2 4.0
+         L9.7 2.6
+         L8.3 2.1
+         L9.7 1.6
+         Z"
+      fill="white"
+    />
+  </svg>
+);
+
+
+
+/**
+ * Mode Icon Mapping - Maps modes to icon components
+ */
+const MODE_ICON_COMPONENT = {
+  'none': EditIcon,
+  'object_tracking': BullseyeIcon,
+  'ai_video': MagicWandIcon
+};
+
+/**
+ * Mode Label Mapping
+ * Human-readable labels for each editing mode (used in dropdown and tooltips)
+ */
+const MODE_LABEL = {
+  'none': 'Native Edits',
+  'object_tracking': 'Object Tracking',
+  'ai_video': 'AI Generation'
+};
+
 export const Footer = (props) => {
   const modeDropdownRef = useRef(null);
   const [draft, setDraft] = React.useState("");
@@ -94,25 +236,41 @@ export const Footer = (props) => {
     }
   };
 
+  /**
+   * Handle mode change - UXP reliable pattern
+   * Automatically links object_tracking mode to Colab integration
+   * Closes dropdown immediately on selection (UXP-safe)
+   */
   const handleModeChange = (mode) => {
     if (props.setEditingMode) {
       props.setEditingMode(mode);
       console.log(`[Footer] Editing mode changed to: ${mode}`);
     }
+    
+    // Object tracking mode always uses Colab integration
+    if (mode === 'object_tracking') {
+      if (props.setColabMode) {
+        props.setColabMode(true);
+        console.log('[Footer] Object tracking mode enabled - Colab mode set to true');
+      }
+    } else {
+      // When switching away from object_tracking, disable Colab mode
+      if (props.setColabMode) {
+        props.setColabMode(false);
+        console.log('[Footer] Colab mode disabled');
+      }
+    }
+    
+    // Close dropdown immediately on selection (UXP-reliable pattern)
     setShowModeDropdown(false);
   };
 
-  const getModeDisplay = (mode) => {
-    const modes = {
-      'none': { name: 'Regular Native Edits', icon: 'edit' },
-      'object_tracking': { name: 'Object Tracking Mode', icon: 'track' },
-      'ai_video': { name: 'AI Video Generation Mode', icon: 'ai' }
-    };
-    return modes[mode] || modes['none'];
-  };
-
+  // Get current mode with fallback to 'none'
   const currentMode = props.editingMode || 'none';
-  const modeDisplay = getModeDisplay(currentMode);
+  
+  // Get icon component and label for current mode
+  const CurrentModeIcon = MODE_ICON_COMPONENT[currentMode] || MODE_ICON_COMPONENT['none'];
+  const currentModeLabel = MODE_LABEL[currentMode] || MODE_LABEL['none'];
   
   // Debug logging
   React.useEffect(() => {
@@ -120,22 +278,42 @@ export const Footer = (props) => {
     console.log('[Footer] Props editingMode:', props.editingMode);
   }, [currentMode, props.editingMode]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (modeDropdownRef.current && !modeDropdownRef.current.contains(event.target)) {
-        setShowModeDropdown(false);
-      }
-    };
+  /**
+   * UXP-reliable dropdown handling
+   * No document-level event listeners (UXP sandbox limitation)
+   * Dropdown closes on:
+   * - Mode selection (handled in handleModeChange)
+   * - Button click toggle (handled in onClick)
+   * - Button blur/focus loss (handled in onBlur)
+   */
+  const handleModeButtonClick = () => {
+    // Toggle dropdown - clicking button again closes it
+    setShowModeDropdown(!showModeDropdown);
+  };
 
-    if (showModeDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
+  const handleModeButtonBlur = (e) => {
+    // Close dropdown when button loses focus (UXP-reliable pattern)
+    // Check if focus is moving to dropdown items - if so, don't close
+    // This prevents closing when clicking dropdown items
+    const relatedTarget = e.relatedTarget || document.activeElement;
+    if (modeDropdownRef.current && modeDropdownRef.current.contains(relatedTarget)) {
+      return; // Focus is moving to dropdown, don't close
     }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showModeDropdown]);
+    
+    // Small delay to allow onClick on dropdown items to fire first
+    setTimeout(() => {
+      setShowModeDropdown(false);
+    }, 150);
+  };
+  
+  /**
+   * Handle dropdown item click with mouseDown to prevent blur
+   * UXP-reliable pattern: prevent blur when clicking dropdown items
+   */
+  const handleDropdownItemMouseDown = (e) => {
+    // Prevent blur on button when clicking dropdown items
+    e.preventDefault();
+  };
 
   const handleColabUrlChange = (e) => {
     if (props.setColabUrl) {
@@ -221,8 +399,8 @@ export const Footer = (props) => {
           </div>
         )}
 
-        {/* Colab URL Input - shown when Colab mode is active */}
-        {props.colabMode && (
+        {/* Colab URL Input - shown when Object Tracking mode is active (always uses Colab) */}
+        {props.editingMode === 'object_tracking' && (
           <div className="colab-url-bar">
             <span className="colab-label">🔗 Colab URL:</span>
             <input
@@ -292,98 +470,67 @@ export const Footer = (props) => {
           
           {/* Mode Selector Dropdown */}
           <div className={`mode-selector-wrapper ${showModeDropdown ? 'dropdown-open' : ''}`} ref={modeDropdownRef}>
-            {showModeDropdown && (
+            {showModeDropdown && (() => {
+              const NoneIcon = MODE_ICON_COMPONENT['none'];
+              const TrackingIcon = MODE_ICON_COMPONENT['object_tracking'];
+              const AIIcon = MODE_ICON_COMPONENT['ai_video'];
+              
+              return (
               <div className="mode-selector-dropdown">
                 <div 
                   className={`mode-dropdown-option ${currentMode === 'none' ? 'active' : ''}`}
                   onClick={() => handleModeChange('none')}
+                    onMouseDown={handleDropdownItemMouseDown}
                   title="Use Premiere Pro's native editing features"
                 >
-                  <svg className="mode-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                  </svg>
-                  <span className="mode-option-text">Regular Native Edits</span>
+                    <NoneIcon />
+                    <span className="mode-option-text">{MODE_LABEL['none']}</span>
                 </div>
                 <div 
                   className={`mode-dropdown-option ${currentMode === 'object_tracking' ? 'active' : ''}`}
                   onClick={() => handleModeChange('object_tracking')}
+                    onMouseDown={handleDropdownItemMouseDown}
                   title="Track objects in video and apply effects to tracked objects"
                 >
-                  <svg className="mode-icon " viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M12 1v6m0 6v6M23 12h-6m-6 0H1m16.95-4.95l-4.24 4.24m0-8.48l4.24 4.24m-8.48 0l4.24 4.24m0-8.48l-4.24 4.24"/>
-                  </svg>
-                  <span className="mode-option-text">Object Tracking Mode</span>
+                    <TrackingIcon />
+                    <span className="mode-option-text">{MODE_LABEL['object_tracking']}</span>
                 </div>
                 <div 
                   className={`mode-dropdown-option ${currentMode === 'ai_video' ? 'active' : ''}`}
                   onClick={() => handleModeChange('ai_video')}
+                    onMouseDown={handleDropdownItemMouseDown}
                   title="Generate and transform video using AI"
                 >
-                  <svg className="mode-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                  <span className="mode-option-text">AI Video Generation Mode</span>
+                    <AIIcon />
+                    <span className="mode-option-text">{MODE_LABEL['ai_video']}</span>
+                  </div>
                 </div>
-              </div>
-            )}
-            <button
-              className="mode-selector-button"
-              onClick={() => {
-                console.log('[Footer] Button clicked, currentMode:', currentMode);
-                setShowModeDropdown(!showModeDropdown);
-              }}
-              title={modeDisplay.name}
+              );
+            })()}
+            <sp-button
+              quiet
+              class="mode-selector-button"
+              onClick={handleModeButtonClick}
+              onBlur={handleModeButtonBlur}
+              title={currentModeLabel}
+              aria-label={`Current mode: ${currentModeLabel}. Click to change mode.`}
             >
-              <svg 
-                key={currentMode}
-                className="mode-icon" 
-                viewBox="0 0 24 24" 
-                width="22" 
-                height="22" 
-                xmlns="http://www.w3.org/2000/svg"
-                style={{ display: 'block', fill: '#FFFFFF' }}
-              >
-                {currentMode === 'none' ? (
-                  <>
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="#FFFFFF" stroke="none"/>
-                  </>
-                ) : currentMode === 'object_tracking' ? (
-                  <>
-                    <circle cx="12" cy="12" r="3" fill="#FFFFFF" stroke="none"/>
-                    <path d="M12 1v6m0 6v6M23 12h-6m-6 0H1m16.95-4.95l-4.24 4.24m0-8.48l4.24 4.24m-8.48 0l4.24 4.24m0-8.48l-4.24 4.24" fill="#FFFFFF" stroke="none"/>
-                  </>
-                ) : (
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#FFFFFF" stroke="none"/>
-                )}
-              </svg>
-              <svg 
-                className="mode-dropdown-arrow" 
-                viewBox="0 0 24 24" 
-                width="12" 
-                height="12" 
-                style={{
-                  fill: 'rgba(255,255,255,0.5)', 
-                  position: 'absolute', 
-                  bottom: '2px', 
-                  right: '2px'
-                }}
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M7 10l5 5 5-5z" fill="rgba(255,255,255,0.5)"/>
-              </svg>
-            </button>
+              <span className="mode-icon-wrap">
+                <CurrentModeIcon />
+              </span>
+            </sp-button>
           </div>
           
           <input
-            className="chat-input"
+            className={`chat-input ${props.isProcessing ? 'processing' : ''}`}
             value={draft}
-            placeholder="Type a message..."
+            placeholder={props.isProcessing ? "Processing..." : "Type a message..."}
             onChange={(e) => setDraft(e.target.value)}
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
+            disabled={props.isProcessing}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !props.isProcessing) {
                 e.preventDefault();
                 handleSend();
               }
@@ -407,11 +554,15 @@ export const Footer = (props) => {
             </svg>
           </sp-button>
           <sp-button
-            className="send-btn"
-            aria-label="Send message"
-            title="Send"
+            className={`send-btn ${props.isProcessing ? 'processing' : ''}`}
+            aria-label={props.isProcessing ? "Processing..." : "Send message"}
+            title={props.isProcessing ? "Processing..." : "Send"}
             onClick={handleSend}
+            disabled={props.isProcessing || !draft.trim()}
           >
+            {props.isProcessing ? (
+              <div className="spinner-small"></div>
+            ) : (
             <svg
               className="send-icon"
               xmlns="http://www.w3.org/2000/svg"
@@ -421,6 +572,7 @@ export const Footer = (props) => {
             >
               <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
             </svg>
+            )}
           </sp-button>
         </div>
       </div>

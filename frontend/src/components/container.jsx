@@ -6,6 +6,7 @@ import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
 import { getEffectParameters } from "../services/editingActions";
 import { processPrompt, processMedia, processWithColabStream } from "../services/backendClient";
 import { getSelectedMediaFilePaths, replaceClipMedia, getClipTimingInfo } from "../services/clipUtils";
+import "./container.css";
 
 const ppro = require("premierepro");
 
@@ -28,6 +29,9 @@ export const Container = () => {
   const [processingProgress, setProcessingProgress] = useState(null); // null when not processing, 0-100 when active
   const [processingMessage, setProcessingMessage] = useState("");
   const [processingStage, setProcessingStage] = useState("");
+  
+  // Loading state for regular AI processing (non-Colab modes)
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -305,9 +309,14 @@ export const Container = () => {
           writeToConsole(`📋 With context: ${Object.keys(contextParams).length} parameters`);
         }
         
+        // Set loading state for non-Colab modes
+        if (editingMode !== 'object_tracking' && !colabMode) {
+          setIsProcessing(true);
+        }
+        
         // Determine which backend call to use based on mode
-        // Colab mode takes precedence
-        if (colabMode) {
+        // Object tracking mode automatically enables Colab (set in Footer component)
+        if (colabMode || editingMode === 'object_tracking') {
           // Colab object tracking mode with SSE streaming
           if (!colabUrl || !colabUrl.trim()) {
             writeToConsole("❌ No Colab URL set. Please paste your ngrok URL from Colab.");
@@ -404,6 +413,11 @@ export const Container = () => {
         }
       } else {
         writeToConsole(`🤖 Using precomputed AI response`);
+      }
+      
+      // Clear loading state for non-Colab modes
+      if (editingMode !== 'object_tracking' && !colabMode) {
+        setIsProcessing(false);
       }
       
       // Log AI response for debugging
@@ -508,14 +522,16 @@ export const Container = () => {
       }
       
       console.error("[Edit] Edit function error:", err);
+      
+      // Clear loading state on error
+      setIsProcessing(false);
     }
   }
 
   return (
-    <>
-      <div className="plugin-container">
-        <Header />
-        <Content message={message} />
+    <div className="plugin-container">
+      <Header />
+      <Content message={message} />
         <Footer
           writeToConsole={writeToConsole}
           clearConsole={clearConsole}
@@ -531,25 +547,8 @@ export const Container = () => {
           processingProgress={processingProgress}
           processingMessage={processingMessage}
           processingStage={processingStage}
+          isProcessing={isProcessing}
         />
-      </div>
-      <style>
-        {`
-    .plugin-container {
-      background-color: var(--color-bg-dark);
-      color: var(--color-text-offwhite);
-      padding: 0; /* edge-to-edge */
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      min-width: 300px;
-      min-height: 300px;
-      box-sizing: border-box;
-    }
-    .plugin-container > sp-body { flex: 0 0 auto; }
-    .plugin-container > .plugin-content, .plugin-container > div.plugin-content { flex: 1 1 auto; }
-    `}
-      </style>
-    </>
+    </div>
   );
 };
