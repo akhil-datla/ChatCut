@@ -134,6 +134,9 @@ export const Container = () => {
       
       const results = [];
       for (const p of params) {
+        // Filter out built-in parameters (Opacity, Motion) as they are not selectable context
+        if (p.isBuiltIn) continue;
+
         let value = null;
         try {
           // Try simple get value
