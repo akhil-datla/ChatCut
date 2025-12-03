@@ -285,32 +285,40 @@ export const Footer = (props) => {
           {/* Toggle switch for Process Media Mode */}
           <div
             className="toggle-container"
-            title="AI Video Mode"
+            title="AI Video Mode - Sends video file to AI for analysis"
             onClick={toggleProcessMedia}
           >
-            <div className={`toggle-switch ${props.processMediaMode ? 'active' : ''}`}>
-              <div className="toggle-slider"></div>
+            <div className="toggle-wrapper">
+              <div className={`toggle-switch ${props.processMediaMode ? 'active' : ''}`}>
+                <div className="toggle-slider"></div>
+              </div>
+              <span className="toggle-label">AI Video</span>
             </div>
           </div>
 
           {/* Toggle switch for Colab Mode with status indicator */}
           <div
             className="toggle-container colab-toggle"
-            title={`Colab Mode${props.colabMode ? (colabConnected === true ? ' (Connected)' : colabConnected === false ? ' (Disconnected)' : ' (Checking...)') : ''}`}
+            title={`Colab Mode${props.colabMode ? (colabConnected === true ? ' - Connected' : colabConnected === false ? ' - Disconnected' : ' - Checking...') : ' - Process videos using Google Colab GPU'}`}
             onClick={toggleColabMode}
           >
-            <div className={`toggle-switch colab ${props.colabMode ? 'active' : ''}`}>
-              <div className="toggle-slider"></div>
+            <div className="toggle-wrapper">
+              <div className={`toggle-switch colab ${props.colabMode ? 'active' : ''}`}>
+                <div className="toggle-slider"></div>
+              </div>
+              <span className="toggle-label">
+                Colab Mode
+                {/* Connection status dot - only shown when Colab mode is active */}
+                {props.colabMode && (
+                  <span
+                    className={`colab-status-dot ${
+                      colabConnected === true ? 'connected' :
+                      colabConnected === false ? 'disconnected' : 'checking'
+                    }`}
+                  />
+                )}
+              </span>
             </div>
-            {/* Connection status dot - only shown when Colab mode is active */}
-            {props.colabMode && (
-              <div
-                className={`colab-status-dot ${
-                  colabConnected === true ? 'connected' :
-                  colabConnected === false ? 'disconnected' : 'checking'
-                }`}
-              />
-            )}
           </div>
         </div>
       </div>
