@@ -1,19 +1,109 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./footer.css";
-import { mediacoreBackend } from "uxp";
+import { checkColabHealth } from "../services/backendClient";
+
 export const Footer = (props) => {
-  const [draft, setDraft] = React.useState("");
-  const [availableEffects, setAvailableEffects] = React.useState([]);
-  const [selectedContexts, setSelectedContexts] = React.useState([]); // Array of { name: "Mosaic", params: {...} }
-  const [isLoadingEffects, setIsLoadingEffects] = React.useState(false);
-  const [showContextSelect, setShowContextSelect] = React.useState(false);
-  const [isInputFocused, setIsInputFocused] = React.useState(false);
+  const [draft, setDraft] = useState("");
+  const [availableEffects, setAvailableEffects] = useState([]);
+  const [selectedContexts, setSelectedContexts] = useState([]); // Array of { name: "Mosaic", params: {...} }
+  const [isLoadingEffects, setIsLoadingEffects] = useState(false);
+  const [showContextSelect, setShowContextSelect] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Colab connection status: null = unchecked, true = connected, false = disconnected
+  const [colabConnected, setColabConnected] = useState(null);
+  const healthCheckTimeoutRef = useRef(null);
+  const healthCheckIntervalRef = useRef(null);
+
+  // Debounced health check when URL changes
+  useEffect(() => {
+    // Clear any pending health check
+    if (healthCheckTimeoutRef.current) {
+      clearTimeout(healthCheckTimeoutRef.current);
+    }
+
+    // Only check if Colab mode is active and URL exists
+    if (props.colabMode && props.colabUrl && props.colabUrl.trim()) {
+      setColabConnected(null); // Show checking state
+
+      // Debounce the health check by 500ms
+      healthCheckTimeoutRef.current = setTimeout(async () => {
+        const isHealthy = await checkColabHealth(props.colabUrl);
+        setColabConnected(isHealthy);
+
+        // Store working URL in localStorage
+        if (isHealthy) {
+          try {
+            localStorage.setItem('chatcut_colab_url', props.colabUrl);
+          } catch (e) {
+            // localStorage might not be available
+          }
+        }
+      }, 500);
+    } else if (!props.colabMode) {
+      setColabConnected(null);
+    }
+
+    return () => {
+      if (healthCheckTimeoutRef.current) {
+        clearTimeout(healthCheckTimeoutRef.current);
+      }
+    };
+  }, [props.colabUrl, props.colabMode]);
+
+  // Periodic health check every 30 seconds while Colab mode is active
+  useEffect(() => {
+    if (healthCheckIntervalRef.current) {
+      clearInterval(healthCheckIntervalRef.current);
+    }
+
+    if (props.colabMode && props.colabUrl && props.colabUrl.trim()) {
+      healthCheckIntervalRef.current = setInterval(async () => {
+        const isHealthy = await checkColabHealth(props.colabUrl);
+        setColabConnected(isHealthy);
+      }, 30000); // Check every 30 seconds
+    }
+
+    return () => {
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current);
+      }
+    };
+  }, [props.colabMode, props.colabUrl]);
+
+  // Load last working URL from localStorage on mount
+  useEffect(() => {
+    if (props.setColabUrl && !props.colabUrl) {
+      try {
+        const savedUrl = localStorage.getItem('chatcut_colab_url');
+        if (savedUrl) {
+          props.setColabUrl(savedUrl);
+        }
+      } catch (e) {
+        // localStorage might not be available
+      }
+    }
+  }, []);
 
   const toggleProcessMedia = () => {
     if (props.setProcessMediaMode) {
       const newValue = !props.processMediaMode;
       props.setProcessMediaMode(newValue);
       console.log(`[Footer] Process Media Mode toggled to: ${newValue}`);
+    }
+  };
+
+  const toggleColabMode = () => {
+    if (props.setColabMode) {
+      const newValue = !props.colabMode;
+      props.setColabMode(newValue);
+      console.log(`[Footer] Colab Mode toggled to: ${newValue}`);
+    }
+  };
+
+  const handleColabUrlChange = (e) => {
+    if (props.setColabUrl) {
+      props.setColabUrl(e.target.value);
     }
   };
   
@@ -77,6 +167,38 @@ export const Footer = (props) => {
   return (
     <sp-body>
       <div className="plugin-footer-container">
+        {/* Progress Bar - shown when processing */}
+        {props.processingProgress !== null && (
+          <div className="progress-bar-container">
+            <div className="progress-bar-wrapper">
+              <div className="progress-bar">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${props.processingProgress}%` }}
+                />
+              </div>
+              <span className="progress-percentage">{props.processingProgress}%</span>
+            </div>
+            {props.processingMessage && (
+              <div className="progress-message">{props.processingMessage}</div>
+            )}
+          </div>
+        )}
+
+        {/* Colab URL Input - shown when Colab mode is active */}
+        {props.colabMode && (
+          <div className="colab-url-bar">
+            <span className="colab-label">🔗 Colab URL:</span>
+            <input
+              className="colab-url-input"
+              type="text"
+              value={props.colabUrl || ""}
+              placeholder="https://xxxxx.ngrok.io"
+              onChange={handleColabUrlChange}
+            />
+          </div>
+        )}
+
         {/* Context Chips Display */}
         {selectedContexts.length > 0 && (
           <div className="context-chips-container">
@@ -161,13 +283,41 @@ export const Footer = (props) => {
           </sp-button>
           
           {/* Toggle switch for Process Media Mode */}
-          <div 
-            className="toggle-container" 
-            title="AI Video Mode"
+          <div
+            className="toggle-container"
+            title="AI Video Mode - Sends video file to AI for analysis"
             onClick={toggleProcessMedia}
           >
-            <div className={`toggle-switch ${props.processMediaMode ? 'active' : ''}`}>
-              <div className="toggle-slider"></div>
+            <div className="toggle-wrapper">
+              <div className={`toggle-switch ${props.processMediaMode ? 'active' : ''}`}>
+                <div className="toggle-slider"></div>
+              </div>
+              <span className="toggle-label">AI Video</span>
+            </div>
+          </div>
+
+          {/* Toggle switch for Colab Mode with status indicator */}
+          <div
+            className="toggle-container colab-toggle"
+            title={`Colab Mode${props.colabMode ? (colabConnected === true ? ' - Connected' : colabConnected === false ? ' - Disconnected' : ' - Checking...') : ' - Process videos using Google Colab GPU'}`}
+            onClick={toggleColabMode}
+          >
+            <div className="toggle-wrapper">
+              <div className={`toggle-switch colab ${props.colabMode ? 'active' : ''}`}>
+                <div className="toggle-slider"></div>
+              </div>
+              <span className="toggle-label">
+                Colab Mode
+                {/* Connection status dot - only shown when Colab mode is active */}
+                {props.colabMode && (
+                  <span
+                    className={`colab-status-dot ${
+                      colabConnected === true ? 'connected' :
+                      colabConnected === false ? 'disconnected' : 'checking'
+                    }`}
+                  />
+                )}
+              </span>
             </div>
           </div>
         </div>
