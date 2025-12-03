@@ -39,5 +39,27 @@ class ProcessMediaResponse(BaseModel):
     error: Optional[str] = None
     original_path: Optional[str] = None
     output_path: Optional[str] = None
-    task_id: Optional[str] = None 
+    task_id: Optional[str] = None
+
+
+class ColabProcessRequest(BaseModel):
+    """Request model for Colab video processing"""
+    file_path: str
+    prompt: str
+    effect_type: Optional[str] = None
+
+
+class ColabProcessResponse(BaseModel):
+    """Response model for Colab processing"""
+    status: str = "processing"
+    message: str = ""
+    error: Optional[str] = None
+    original_path: Optional[str] = None
+    output_path: Optional[str] = None
+    progress: Optional[int] = None
+
+
+class ColabStartRequest(BaseModel):
+    """Request model for starting Colab session"""
+    ngrok_url: Optional[str] = None 
 
