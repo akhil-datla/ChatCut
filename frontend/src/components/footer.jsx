@@ -539,8 +539,8 @@ export const Footer = (props) => {
           <sp-button
             className="undo-btn"
             aria-label="Undo last action"
-            title="Undo"
-            disabled={true}
+            title={props.canUndo ? "Undo last ChatCut edit" : "No edits to undo"}
+            disabled={!Boolean(props.canUndo)}
             onClick={handleUndo}
           >
             <svg

@@ -6,6 +6,7 @@ import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
 import { getEffectParameters } from "../services/editingActions";
 import { processPrompt, processMedia, processWithColabStream } from "../services/backendClient";
 import { getSelectedMediaFilePaths, replaceClipMedia, getClipTimingInfo } from "../services/clipUtils";
+import { capturePreviousState, executeUndo } from "../services/undoService";
 import "./container.css";
 
 const ppro = require("premierepro");
@@ -32,6 +33,10 @@ export const Container = () => {
   
   // Loading state for regular AI processing (non-Colab modes)
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Track ChatCut edits: history of edits and undos performed
+  const [editHistory, setEditHistory] = useState([]); // Array of { actionName, trackItems, previousState, parameters }
+  const [chatCutUndosCount, setChatCutUndosCount] = useState(0);
 
   const addMessage = (msg) => {
     setMessage((prev) => [...prev, msg]);
@@ -112,9 +117,41 @@ export const Container = () => {
             return false;
   };
 
-  const handleUndo = () => {
-    // Placeholder for teammate's undo implementation
-    console.log("[Container] Undo requested - functionality not yet implemented");
+  // Undo handler: only undo ChatCut edits using custom undo service
+  const handleUndo = async () => {
+    const remainingEdits = editHistory.length - chatCutUndosCount;
+    
+    if (remainingEdits <= 0) {
+      writeToConsole("ℹ️ No ChatCut edits to undo.");
+      return;
+    }
+    
+    // Get the edit to undo (most recent one that hasn't been undone)
+    const editIndex = editHistory.length - chatCutUndosCount - 1;
+    const historyEntry = editHistory[editIndex];
+    
+    if (!historyEntry) {
+      writeToConsole("❌ Could not find edit history entry to undo.");
+      return;
+    }
+    
+    writeToConsole(`🔄 Attempting to undo ChatCut edit (${historyEntry.actionName})...`);
+    
+    try {
+      const result = await executeUndo(historyEntry);
+      if (result.successful > 0) {
+        // Update undo count after successful undo
+        setChatCutUndosCount(prev => prev + 1);
+        writeToConsole(`↩️ Undo completed! Reversed ${result.successful} clip(s).`);
+        if (result.failed > 0) {
+          writeToConsole(`⚠️ Failed to undo ${result.failed} clip(s).`);
+        }
+      } else {
+        writeToConsole("❌ Undo failed - could not reverse the edit.");
+      }
+    } catch (err) {
+      writeToConsole(`❌ Undo failed with error: ${err.message || err}`);
+    }
   };
 
   const onSend = (text, contextParams = null) => {
@@ -513,6 +550,17 @@ export const Container = () => {
         return;
       }
       
+      // Capture previous state before making the edit (for undo)
+      let previousState = null;
+      try {
+        const actionName = aiResponse.action || (aiResponse.actions && aiResponse.actions[0] && aiResponse.actions[0].action);
+        if (actionName) {
+          previousState = await capturePreviousState(trackItems, actionName);
+        }
+      } catch (err) {
+        console.error("[Edit] Error capturing previous state (non-blocking):", err);
+      }
+      
       // Dispatch the action(s) with extracted parameters
       let dispatchResult;
       const isAudioAction = aiResponse.action === 'adjustVolume' || aiResponse.action === 'applyAudioFilter';
@@ -522,6 +570,14 @@ export const Container = () => {
         dispatchResult = await dispatchActions(aiResponse.actions, trackItems);
         const { summary } = dispatchResult;
         if (summary.successful > 0) {
+          // Store edit in history for undo (use first action for history)
+          const historyEntry = {
+            actionName: aiResponse.actions[0].action,
+            trackItems: trackItems,
+            previousState: previousState,
+            parameters: aiResponse.actions[0].parameters || {}
+          };
+          setEditHistory(prev => [...prev, historyEntry]);
           // Success - no need to show message, AI message was already shown
         } else {
           writeToConsole(`❌ Failed to apply actions. Check console for errors.`);
@@ -533,6 +589,14 @@ export const Container = () => {
         
         // Report results with separate handling for audio vs video
         if (result.successful > 0) {
+          // Store edit in history for undo
+          const historyEntry = {
+            actionName: aiResponse.action,
+            trackItems: trackItems,
+            previousState: previousState,
+            parameters: aiResponse.parameters || {}
+          };
+          setEditHistory(prev => [...prev, historyEntry]);
           // Success - no need to show message, AI message was already shown
           if (result.failed > 0) {
             if (isAudioAction) {
@@ -592,6 +656,7 @@ export const Container = () => {
           clearConsole={clearConsole}
           onSend={onSend}
           onUndo={handleUndo}
+          canUndo={editHistory.length > chatCutUndosCount}
           editingMode={editingMode}
           setEditingMode={setEditingMode}
           colabMode={colabMode}
