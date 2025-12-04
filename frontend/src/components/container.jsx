@@ -39,11 +39,40 @@ export const Container = () => {
 
   const writeToConsole = (consoleMessage) => {
     // Accept string or message-like objects for backward compatibility
+    const messageId = Date.now().toString();
     if (typeof consoleMessage === "string") {
-      addMessage({ id: Date.now().toString(), sender: "bot", text: consoleMessage });
+      addMessage({ 
+        id: messageId, 
+        sender: "bot", 
+        text: consoleMessage,
+        isTyping: true, 
+        typingSpeed: 10
+      });
     } else if (consoleMessage && consoleMessage.text) {
-      addMessage(consoleMessage);
+      addMessage({
+        ...consoleMessage,
+        id: consoleMessage.id || messageId,
+        isTyping: true,
+        typingSpeed: 10
+      });
     }
+  };
+
+  const showLoadingIndicator = () => {
+    // Remove any existing loading indicator first to avoid duplicates
+    setMessage((prev) => prev.filter((m) => m.id !== "loading-indicator"));
+    
+    // Add new loading indicator
+    addMessage({ 
+      id: "loading-indicator", 
+      sender: "bot", 
+      text: "Processing", 
+      isLoading: true 
+    });
+  };
+
+  const hideLoadingIndicator = () => {
+    setMessage((prev) => prev.filter((m) => m.id !== "loading-indicator"));
   };
 
   const clearConsole = () => {
@@ -59,30 +88,28 @@ export const Container = () => {
       return false;
     }
 
-    writeToConsole("🎬 Replacing clip with processed video...");
-
-    for (const trackItem of trackItems) {
-      try {
-        const projectItem = await trackItem.getProjectItem();
-        const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
-        if (clipProjectItem) {
-          const mediaPath = await clipProjectItem.getMediaFilePath();
-          if (mediaPath === response.original_path) {
-            const success = await replaceClipMedia(trackItem, response.output_path);
-            if (success) {
-              writeToConsole(`✅ Replaced clip with processed video!`);
-              return true;
-            } else {
-              writeToConsole(`⚠️ Failed to replace clip`);
-              return false;
+            for (const trackItem of trackItems) {
+              try {
+                const projectItem = await trackItem.getProjectItem();
+                const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+                if (clipProjectItem) {
+                  const mediaPath = await clipProjectItem.getMediaFilePath();
+                  if (mediaPath === response.original_path) {
+                    const success = await replaceClipMedia(trackItem, response.output_path);
+                    if (success) {
+                      // Success - no message needed
+                      return true;
+                    } else {
+                      writeToConsole(`⚠️ Failed to replace clip`);
+                      return false;
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error("Error replacing clip:", err);
+              }
             }
-          }
-        }
-      } catch (err) {
-        console.error("Error replacing clip:", err);
-      }
-    }
-    return false;
+            return false;
   };
 
   const handleUndo = () => {
@@ -114,6 +141,11 @@ export const Container = () => {
       
       const results = [];
       for (const p of params) {
+        // Skip Motion and Opacity effects
+        if (p.isBuiltIn) {
+          continue;
+        }
+        
         let value = null;
         try {
           // Try simple get value
@@ -154,35 +186,52 @@ export const Container = () => {
       const project = await ppro.Project.getActiveProject();
       if (!project) {
         writeToConsole("❌ No active project. Please open a project in Premiere Pro.");
+        setIsProcessing(false);
         return;
       }
 
       const sequence = await project.getActiveSequence();
       if (!sequence) {
         writeToConsole("❌ No active sequence. Please open a sequence in Premiere Pro.");
+        setIsProcessing(false);
         return;
       }
 
       const selection = await sequence.getSelection();
       if (!selection) {
         writeToConsole("❌ Could not get selection. Please select clips on the timeline.");
+        setIsProcessing(false);
         return;
       }
 
-      // For Colab mode, skip AI preview and go straight to video clips
+      // For Colab mode and AI video mode, skip AI preview and go straight to video clips
       // Colab handles all processing itself (tracking, effects, etc.)
+      // AI video mode processes with processMedia instead of processPrompt
       let aiResponse;
       let isAudioAction = false;
 
-      if (!colabMode) {
+      if (!colabMode && editingMode !== "ai_video") {
         // First, check what type of action this might be by processing the prompt
         // This helps us determine if we need video or audio clips
         try {
+          setIsProcessing(true);
+          showLoadingIndicator();
           aiResponse = await processPrompt(text);
           console.log("[SelectClips] AI preview:", aiResponse);
         } catch (err) {
           // If AI fails, default to video clips
           console.warn("[SelectClips] Could not preview AI response, defaulting to video clips");
+        } finally {
+          // Keep processing true if we continue to editClips, but hide loading for now as editClips might show it again if needed
+          // Actually editClips will show it if aiResponse is null, but here aiResponse might be populated.
+          // If we have aiResponse, editClips won't show loading.
+          // So we should hide it here if we are done with this step.
+          hideLoadingIndicator();
+          // We don't set isProcessing(false) yet because editClips might need it, 
+          // but editClips handles its own processing state logic.
+          // If we set it to false here, it might flicker.
+          // However, if selectClips returns early (e.g. no clips), we need to make sure it's false.
+          // For now, let's just hide the indicator.
         }
 
         const actionType = aiResponse && aiResponse.action;
@@ -224,6 +273,7 @@ export const Container = () => {
         
         if (audioTrackItems.length === 0) {
           writeToConsole("❌ No audio clips selected. Please select audio clips on audio tracks.");
+          setIsProcessing(false);
           return;
         }
         
@@ -269,6 +319,7 @@ export const Container = () => {
         
         if (videoTrackItems.length === 0) {
           writeToConsole("❌ No video clips selected. Please select clips with video content on video tracks.");
+          setIsProcessing(false);
           return;
         }
         
@@ -285,6 +336,7 @@ export const Container = () => {
         sender: "bot", 
         text: `Error: ${err.message || err}` 
       });
+      setIsProcessing(false);
     }
   }
 
@@ -298,20 +350,14 @@ export const Container = () => {
         return;
       }
       
-      writeToConsole(`Found ${trackItems.length} selected clip(s)`);
-      
       // Use precomputed AI response if available, otherwise process the prompt
       aiResponse = precomputedAiResponse;
       
       if (!aiResponse) {
-        writeToConsole(`🤖 Sending to AI: "${text}"`);
-        if (contextParams) {
-          writeToConsole(`📋 With context: ${Object.keys(contextParams).length} parameters`);
-        }
-        
-        // Set loading state for non-Colab modes
+        // Show loading indicator for non-Colab modes
         if (editingMode !== 'object_tracking' && !colabMode) {
           setIsProcessing(true);
+          showLoadingIndicator();
         }
         
         // Determine which backend call to use based on mode
@@ -319,6 +365,7 @@ export const Container = () => {
         if (colabMode || editingMode === 'object_tracking') {
           // Colab object tracking mode with SSE streaming
           if (!colabUrl || !colabUrl.trim()) {
+            hideLoadingIndicator();
             writeToConsole("❌ No Colab URL set. Please paste your ngrok URL from Colab.");
             return;
           }
@@ -326,6 +373,7 @@ export const Container = () => {
           // Get timing info for server-side trimming (prevents uploading full source files)
           const timingInfo = await getClipTimingInfo(trackItems[0]);
           if (!timingInfo) {
+            hideLoadingIndicator();
             writeToConsole("❌ Could not get clip timing info. Please select a valid clip.");
             return;
           }
@@ -334,7 +382,6 @@ export const Container = () => {
           const clipDuration = timingInfo.duration;
 
           console.log(`[Colab] Trimmed clip: ${clipDuration.toFixed(2)}s (${timingInfo.inPoint.toFixed(2)}s - ${timingInfo.outPoint.toFixed(2)}s)`);
-          writeToConsole(`📐 Clip: ${clipDuration.toFixed(1)}s (trimmed from source)`);
 
           // Start progress tracking (loading bar shows all progress info)
           setProcessingProgress(0);
@@ -362,6 +409,7 @@ export const Container = () => {
             setProcessingStage("");
 
             if (colabResponse.error) {
+              hideLoadingIndicator();
               writeToConsole(`❌ Colab error: ${colabResponse.message}`);
               return;
             }
@@ -373,6 +421,7 @@ export const Container = () => {
             setProcessingProgress(null);
             setProcessingMessage("");
             setProcessingStage("");
+            hideLoadingIndicator();
             writeToConsole(`❌ Colab processing failed: ${err.message}`);
           }
           return; // Don't continue to standard AI processing
@@ -381,12 +430,14 @@ export const Container = () => {
           const duration = await trackItems[0].getDuration();
           console.log("Clip duration (seconds):", duration.seconds);
           if (duration.seconds > 5){
+            hideLoadingIndicator();
             writeToConsole("❌ Clip too long for generative AI processing. Please trim clip to 5 seconds or less.");
             return;
           }
           const filePaths = await getSelectedMediaFilePaths(project);
 
           if (filePaths.length === 0) {
+            hideLoadingIndicator();
             writeToConsole("❌ No media files selected. Please select a clip.");
             return;
           }
@@ -396,7 +447,6 @@ export const Container = () => {
           }
 
           const filePath = filePaths[0];
-          writeToConsole(`📹 Sending media file to AI: ${filePath.split('/').pop()}`);
           aiResponse = await processMedia(filePath, text);
 
           // Use shared helper for clip replacement (same as Colab)
@@ -405,15 +455,17 @@ export const Container = () => {
           }
         } else if (editingMode === "object_tracking") {
           // Object tracking mode - not yet implemented (teammate will add backend)
+          hideLoadingIndicator();
           writeToConsole("⚠️ Object Tracking Mode is not yet available. This feature will be implemented soon.");
           return;
         } else {
           // Regular native edits mode (editingMode === "none")
           aiResponse = await processPrompt(text, contextParams);
         }
-      } else {
-        writeToConsole(`🤖 Using precomputed AI response`);
       }
+      
+      // Hide loading indicator
+      hideLoadingIndicator();
       
       // Clear loading state for non-Colab modes
       if (editingMode !== 'object_tracking' && !colabMode) {
@@ -423,19 +475,24 @@ export const Container = () => {
       // Log AI response for debugging
       console.log("[Edit] AI Response:", aiResponse);
       
-      // Show AI confirmation
+      // Check if this is a successful AI video processing response (has output_path but no action)
+      if (aiResponse.output_path && aiResponse.original_path && !aiResponse.action && !aiResponse.actions) {
+        // Show success message with typing animation
+        writeToConsole("✅ Successfully generated AI video");
+        return;
+      }
+      
+      // Show AI message only when successful (with typing animation)
       // Support single-action responses (legacy) and multi-action responses (new)
       if (aiResponse.action) {
-        writeToConsole(`✨ AI extracted: "${aiResponse.action}" with parameters: ${JSON.stringify(aiResponse.parameters)}`);
+        // Only show the AI message, not the extraction details
         if (aiResponse.message) {
-          writeToConsole(`💬 AI message: ${aiResponse.message}`);
+          writeToConsole(aiResponse.message);
         }
       } else if (aiResponse.actions && Array.isArray(aiResponse.actions)) {
-        writeToConsole(`✨ AI extracted ${aiResponse.actions.length} actions`);
-        if (aiResponse.message) writeToConsole(`💬 AI message: ${aiResponse.message}`);
-        for (let i = 0; i < aiResponse.actions.length; i++) {
-          const a = aiResponse.actions[i];
-          writeToConsole(`  • ${a.action} ${JSON.stringify(a.parameters || {})}`);
+        // Only show the AI message if available
+        if (aiResponse.message) {
+          writeToConsole(aiResponse.message);
         }
       } else {
         // Handle special non-action responses
@@ -446,7 +503,7 @@ export const Container = () => {
         }
         // Handle uncertainty messages from backend (no parameters expected)
         if (aiResponse.error === "NEEDS_SELECTION" || aiResponse.error === "NEEDS_SPECIFICATION") {
-          writeToConsole(`🤔 ${aiResponse.message}`);
+          writeToConsole(`${aiResponse.message}`); // Don't type error messages
         } else {
           writeToConsole(`❌ AI couldn't understand: ${aiResponse.message || "Try: 'zoom in by 120%', 'zoom out', etc."}`);
           if (aiResponse.error) {
@@ -465,8 +522,7 @@ export const Container = () => {
         dispatchResult = await dispatchActions(aiResponse.actions, trackItems);
         const { summary } = dispatchResult;
         if (summary.successful > 0) {
-          writeToConsole(`✅ Actions applied successfully to ${summary.successful} clip(s)!`);
-          if (summary.failed > 0) writeToConsole(`⚠️ Failed on ${summary.failed} clip(s)`);
+          // Success - no need to show message, AI message was already shown
         } else {
           writeToConsole(`❌ Failed to apply actions. Check console for errors.`);
         }
@@ -477,11 +533,7 @@ export const Container = () => {
         
         // Report results with separate handling for audio vs video
         if (result.successful > 0) {
-          if (isAudioAction) {
-            writeToConsole(`✅ Audio effect applied successfully to ${result.successful} clip(s)!`);
-          } else {
-            writeToConsole(`✅ Action applied successfully to ${result.successful} clip(s)!`);
-          }
+          // Success - no need to show message, AI message was already shown
           if (result.failed > 0) {
             if (isAudioAction) {
               writeToConsole(`⚠️ Audio effect failed on ${result.failed} clip(s). Check that audio clips are selected and have the required audio filters available.`);
@@ -523,17 +575,20 @@ export const Container = () => {
       
       console.error("[Edit] Edit function error:", err);
       
+      // Hide loading indicator on error
+      hideLoadingIndicator();
+      
       // Clear loading state on error
       setIsProcessing(false);
     }
   }
 
   return (
-    <div className="plugin-container">
-      <Header />
-      <Content message={message} />
-        <Footer
-          writeToConsole={writeToConsole}
+      <div className="plugin-container">
+        <Header />
+        <Content message={message} />
+          <Footer
+            writeToConsole={writeToConsole}
           clearConsole={clearConsole}
           onSend={onSend}
           onUndo={handleUndo}

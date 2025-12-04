@@ -7,6 +7,7 @@ import os
 import json
 import re
 from typing import Dict, Any, Optional
+import time
 
 try:
     import google.generativeai as genai
@@ -53,6 +54,7 @@ class GeminiProvider(AIProvider):
         """
         Process user prompt using Gemini API
         """
+        time.sleep(0.15)
         if not self.is_configured():
             return AIProviderResult.failure(
                 message="Gemini API not configured. Please set GEMINI_API_KEY.",
