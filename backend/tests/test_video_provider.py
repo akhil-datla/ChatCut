@@ -3,14 +3,11 @@ Unit tests for video_provider process_media covering validation and error paths.
 """
 
 import os
-import sys
+from pathlib import Path
 
 import pytest
 
 pytest.importorskip("requests")
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.providers import video_provider
 

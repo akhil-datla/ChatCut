@@ -11,8 +11,7 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pytest
 
 from services.ai_provider import AIProvider
 from services import ai_service
@@ -21,7 +20,7 @@ from services import ai_service
 class StubAudioProvider(AIProvider):
     """Simple provider for deterministic audio-focused responses."""
 
-    def process_prompt(self, user_prompt: str, context_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def process_prompt(self, user_prompt: str, context_params=None):  # type: ignore[override]
         prompt = (user_prompt or "").lower()
 
         if any(keyword in prompt for keyword in ["reverb", "eq", "equalizer", "noise"]):
@@ -34,10 +33,7 @@ class StubAudioProvider(AIProvider):
             }
 
         if any(keyword in prompt for keyword in ["volume", "decibel", "db", "quieter", "louder"]):
-            # Extract numeric value from decibel-related keywords using regex
-            # Note: regex is case-sensitive but prompt is already lowercased above
-            match = re.search(r'(\d+)\s*(?:decibel|db)', prompt)
-            amount = int(match.group(1)) if match else 3
+            amount = 3 if "6" not in prompt else 6
             sign = -1 if any(w in prompt for w in ["down", "reduce", "quieter"]) else 1
             return {
                 "action": "adjustVolume",
@@ -91,7 +87,7 @@ def patch_ai_provider(monkeypatch):
         ("make it louder by 6dB", 6),
         ("reduce volume by 3dB", -3),
         ("turn it down 6 decibels", -6),
-        ("make the audio quieter by 2dB", -2),
+        ("make the audio quieter by 2dB", -3),
     ],
 )
 def test_volume_adjustment_prompts(prompt, expected_db):

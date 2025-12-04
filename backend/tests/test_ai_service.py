@@ -2,11 +2,7 @@
 Tests for AI service - Testing prompt processing and action extraction
 """
 import os
-import sys
 import pytest
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.ai_service import process_prompt, get_available_actions
 
@@ -95,6 +91,23 @@ class TestAIService:
         assert isinstance(result, dict)
         # May or may not have an action depending on AI interpretation
         assert "message" in result
+
+
+def test_get_provider_info_handles_unknown_provider(monkeypatch):
+    """get_provider_info should safely report errors for unknown providers."""
+
+    monkeypatch.setenv("AI_PROVIDER", "nonexistent")
+
+    import services.ai_service as ai_service
+
+    # Reset the cached provider to force re-evaluation with the bad env var
+    monkeypatch.setattr(ai_service, "_PROVIDER_INSTANCE", None)
+
+    info = ai_service.get_provider_info()
+
+    assert info["provider"] == "unknown"
+    assert info["configured"] is False
+    assert "Unknown AI provider" in info["error"]
 
 
 if __name__ == "__main__":

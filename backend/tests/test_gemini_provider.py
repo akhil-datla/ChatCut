@@ -3,13 +3,7 @@ Unit tests for GeminiProvider focusing on configuration, small talk handling,
 content routing helpers, and error responses without hitting external APIs.
 """
 
-import sys
-import os
-
 import pytest
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.providers.gemini_provider import GeminiProvider
 
