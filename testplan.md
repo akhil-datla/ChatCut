@@ -23,6 +23,7 @@ backend/tests/
 ├── test_audio_effects.py            # Tests for audio-specific prompt parsing
 ├── test_gemini_provider.py          # Tests for Gemini AI provider implementation
 ├── test_integration.py              # End-to-end integration tests
+├── test_manual.py                   # Manual test script for interactive testing
 ├── test_provider_abstraction.py     # Tests for provider abstraction layer
 └── test_video_provider.py           # Tests for video generation provider
 ```
@@ -250,6 +251,47 @@ pytest backend/tests/ --cov=services --cov-report=html
 - File validation testing (existence, size, permissions)
 - Error handling before expensive operations
 - No actual API calls (uses monkeypatching)
+
+---
+
+### 9. test_manual.py
+
+**Purpose:** Provides a manual test script for interactive testing without pytest framework.
+
+**Features:**
+- Can be run directly with `python tests/test_manual.py`
+- Tests basic functionality including:
+  - Available actions catalog
+  - API key presence check
+  - Prompt processing with sample prompts
+- Provides human-readable output with ✅, ⚠️, and ❌ symbols
+- Useful for quick validation during development
+
+**Use Cases:**
+- Quick sanity checks after code changes
+- Testing with actual API keys interactively
+- Debugging prompt processing behavior
+- Verifying backend setup before running full test suite
+
+**Sample Output:**
+```
+==================================================
+ChatCut Backend Manual Test
+==================================================
+
+1. Testing available actions...
+   ✅ Found 8 actions: ['zoomIn', 'zoomOut', 'applyFilter', ...]
+
+2. Checking API key...
+   ✅ API key found: AIzaSyBXXX...
+
+3. Testing prompt processing...
+   Testing: 'zoom in by 120%'
+   ✅ Action: zoomIn
+   ✅ Parameters: {'endScale': 120}
+   ✅ Confidence: 1.0
+   ✅ Message: Applying zoom effect
+```
 
 ---
 
