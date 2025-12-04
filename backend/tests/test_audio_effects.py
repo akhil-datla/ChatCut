@@ -35,6 +35,7 @@ class StubAudioProvider(AIProvider):
 
         if any(keyword in prompt for keyword in ["volume", "decibel", "db", "quieter", "louder"]):
             # Extract numeric value from decibel-related keywords using regex
+            # Note: regex is case-sensitive but prompt is already lowercased above
             match = re.search(r'(\d+)\s*(?:decibel|db)', prompt)
             amount = int(match.group(1)) if match else 3
             sign = -1 if any(w in prompt for w in ["down", "reduce", "quieter"]) else 1
