@@ -4,7 +4,6 @@ Unit tests for video_provider process_media covering validation and error paths.
 
 import os
 import sys
-from pathlib import Path
 
 import pytest
 
