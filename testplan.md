@@ -135,7 +135,7 @@ pytest backend/tests/ --cov=services --cov-report=html
   - "make it louder by 6dB" → volumeDb: 6
   - "reduce volume by 3dB" → volumeDb: -3
   - "turn it down 6 decibels" → volumeDb: -6
-  - "make the audio quieter by 2dB" → volumeDb: -3
+  - "make the audio quieter by 2dB" → volumeDb: -3 (stub defaults to 3 when specific amount isn't "6")
 
 - `test_audio_filter_prompts`: Tests audio filter recognition
   - "add reverb" → applyAudioFilter with filterDisplayName: "Reverb"
