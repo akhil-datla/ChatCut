@@ -108,8 +108,8 @@ async function addKeyframe(param, project, seconds, value, interpolation = 'BEZI
  * @returns {Promise<boolean>}
  */
 export async function zoomIn(trackItem, options = {}) {
-  const {
-    startScale = 100,
+  let {
+    startScale,
     endScale = 150,
     startTime = 0,
     duration = null,
@@ -117,8 +117,6 @@ export async function zoomIn(trackItem, options = {}) {
     animated = false  // Default to static zoom (unless user explicitly asks for gradual)
   } = options;
   
-  // For static zoom, use the endScale for both start and end
-  const actualStartScale = animated ? startScale : endScale;
   const actualEndScale = endScale;
 
   try {
@@ -163,6 +161,34 @@ export async function zoomIn(trackItem, options = {}) {
     const zoomDuration = duration || clipDuration;
     const absoluteStartTime = clipStartTime + startTime;
     const absoluteEndTime = absoluteStartTime + zoomDuration;
+
+    // Resolve startScale if not provided
+    if (startScale === undefined) {
+      if (startTime > 0) {
+        // If starting mid-clip, try to get the current value at that time
+        // This enables smooth chaining (e.g. zoom in then out)
+        try {
+          const val = await componentParam.getValueAtTime(
+            ppro.TickTime.createWithSeconds(absoluteStartTime)
+          );
+          const currentVal = (val && typeof val.getValue === 'function') 
+            ? await val.getValue() 
+            : Number(val);
+            
+          startScale = currentVal;
+          log(`Dynamically determined startScale at ${startTime}s: ${startScale}`, "blue");
+        } catch (e) {
+          log(`Could not get current scale, defaulting to 100: ${e}`, "yellow");
+          startScale = 100;
+        }
+      } else {
+        // Default to 100 if starting at beginning
+        startScale = 100;
+      }
+    }
+
+    // For static zoom, use the endScale for both start and end
+    const actualStartScale = animated ? startScale : endScale;
 
     // Log different messages for animated vs static zoom
     if (animated) {
@@ -225,13 +251,20 @@ export async function zoomIn(trackItem, options = {}) {
  */
 export async function zoomOut(trackItem, options = {}) {
   const {
-    startScale = 150,
     endScale = 100,
+    startScale,
     ...otherOptions
   } = options;
 
+  // If startScale is not provided and it's a simple start-of-clip zoom out, default to 150.
+  // Otherwise (mid-clip or chained), leave undefined to let zoomIn resolve it dynamically.
+  let effectiveStartScale = startScale;
+  if (effectiveStartScale === undefined && (!options.startTime || options.startTime === 0)) {
+    effectiveStartScale = 150;
+  }
+
   log("Applying zoom out...", "blue");
-  return await zoomIn(trackItem, { startScale, endScale, ...otherOptions });
+  return await zoomIn(trackItem, { startScale: effectiveStartScale, endScale, ...otherOptions });
 }
 
 /**
@@ -860,6 +893,11 @@ export async function modifyEffectParameter(trackItem, options = {}) {
     const {
       parameterName,
       value,
+      startValue,
+      animated = false,
+      duration = null,
+      startTime = 0,
+      interpolation = 'LINEAR',
       componentName = null,
       excludeBuiltIn = true
     } = options;
@@ -874,7 +912,7 @@ export async function modifyEffectParameter(trackItem, options = {}) {
       return false;
     }
 
-    log(`Looking for parameter "${parameterName}" to set to ${value}`, "blue");
+    log(`Looking for parameter "${parameterName}" to set to ${value}${animated ? ' (animated)' : ''}`, "blue");
 
     // Get all parameters
     const allParams = await getEffectParameters(trackItem);
@@ -926,13 +964,90 @@ export async function modifyEffectParameter(trackItem, options = {}) {
       return false;
     }
 
-    // Set the value
     const param = match.param;
-    const keyframe = param.createKeyframe(Number(value));
-    const setAction = param.createSetValueAction(keyframe, true);
-    await executeAction(project, setAction);
 
-    log(`✅ Parameter "${match.paramDisplayName}" set to ${value}`, "green");
+    if (animated) {
+      // Animation logic (Keyframes)
+      const clipDuration = await getClipDuration(trackItem);
+      const clipStartTime = await getClipInPoint(trackItem);
+      
+      if (clipDuration === null || clipStartTime === null) {
+        log(`❌ Could not get clip timing information for animation`, "red");
+        return false;
+      }
+      
+      const animDuration = duration !== null ? Number(duration) : clipDuration;
+      const absoluteStartTime = clipStartTime + Number(startTime);
+      const absoluteEndTime = absoluteStartTime + animDuration;
+      
+      // Determine start value
+      let actualStartValue = startValue;
+      if (actualStartValue === undefined || actualStartValue === null) {
+        // If startValue is not provided, try to determine it dynamically
+        try {
+          // If we have a specific start time, get the value at that time (crucial for chains/loops)
+          if (startTime > 0) {
+             const valAtTime = await param.getValueAtTime(
+               ppro.TickTime.createWithSeconds(absoluteStartTime)
+             );
+             actualStartValue = (valAtTime && typeof valAtTime.getValue === 'function')
+               ? await valAtTime.getValue()
+               : Number(valAtTime);
+             log(`Dynamically determined startValue at ${startTime}s: ${actualStartValue}`, "blue");
+          } else {
+             // Otherwise fallback to current CTI value or static value
+             const curr = await param.getValue();
+             actualStartValue = (curr && typeof curr.getValue === 'function') 
+               ? await curr.getValue() 
+               : Number(curr);
+          }
+        } catch(e) {
+          log(`Could not get current value, defaulting start value to 0`, "yellow");
+          actualStartValue = 0;
+        }
+      }
+      
+      log(`Animating "${match.paramDisplayName}" from ${actualStartValue} to ${value} over ${animDuration}s`, "blue");
+      log(`Keyframes: ${absoluteStartTime.toFixed(2)}s -> ${absoluteEndTime.toFixed(2)}s`, "blue");
+      
+      // Add start keyframe
+      const startSuccess = await addKeyframe(
+        param, 
+        project, 
+        absoluteStartTime, 
+        Number(actualStartValue), 
+        interpolation
+      );
+      
+      if (!startSuccess) {
+        log("❌ Failed to create start keyframe", "red");
+        return false;
+      }
+      
+      // Add end keyframe
+      const endSuccess = await addKeyframe(
+        param, 
+        project, 
+        absoluteEndTime, 
+        Number(value), 
+        interpolation
+      );
+      
+      if (!endSuccess) {
+        log("❌ Failed to create end keyframe", "red");
+        return false;
+      }
+      
+      log(`✅ Parameter "${match.paramDisplayName}" animated successfully`, "green");
+      
+    } else {
+      // Static value logic (existing behavior)
+      const keyframe = param.createKeyframe(Number(value));
+      const setAction = param.createSetValueAction(keyframe, true);
+      await executeAction(project, setAction);
+      log(`✅ Parameter "${match.paramDisplayName}" set to ${value}`, "green");
+    }
+
     return true;
 
   } catch (err) {
