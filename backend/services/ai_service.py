@@ -78,6 +78,7 @@ def get_available_actions() -> Dict[str, Dict[str, Any]]:
                 "startScale": {"type": "number", "default": 100, "description": "Starting zoom scale"},
                 "animated": {"type": "boolean", "default": True, "description": "Whether to animate zoom"},
                 "duration": {"type": "number", "default": None, "description": "Duration in seconds"},
+                "startTime": {"type": "number", "default": 0, "description": "Start time in seconds relative to clip start"},
                 "interpolation": {"type": "string", "default": "BEZIER", "enum": ["LINEAR", "BEZIER", "HOLD", "EASE_IN", "EASE_OUT"]}
             }
         },
@@ -88,6 +89,7 @@ def get_available_actions() -> Dict[str, Dict[str, Any]]:
                 "startScale": {"type": "number", "default": 150, "description": "Starting zoom scale"},
                 "animated": {"type": "boolean", "default": True, "description": "Whether to animate zoom"},
                 "duration": {"type": "number", "default": None, "description": "Duration in seconds"},
+                "startTime": {"type": "number", "default": 0, "description": "Start time in seconds relative to clip start"},
                 "interpolation": {"type": "string", "default": "BEZIER", "enum": ["LINEAR", "BEZIER", "HOLD", "EASE_IN", "EASE_OUT"]}
             }
         },
@@ -113,19 +115,24 @@ def get_available_actions() -> Dict[str, Dict[str, Any]]:
             }
         },
         "modifyParameter": {
-            "description": "Modify effect parameter(s) on a clip after an effect has been applied",
+            "description": "Modify effect parameter(s) on a clip after an effect has been applied. Supports keyframe animation.",
             "parameters": {
                 "parameterName": {"type": "string", "required": True, "description": "Name of the parameter to modify (e.g., 'Horizontal Blocks', 'Blurriness', 'Opacity')"},
-                "value": {"type": "number", "required": True, "description": "New value for the parameter"},
+                "value": {"type": "number", "required": True, "description": "Target value (or static value if not animated)"},
+                "startValue": {"type": "number", "description": "Starting value for animation (if animated=true)"},
+                "animated": {"type": "boolean", "default": False, "description": "Whether to animate the parameter change over time"},
+                "duration": {"type": "number", "default": None, "description": "Duration of the animation in seconds (null = entire clip)"},
+                "startTime": {"type": "number", "default": 0, "description": "Start time of the animation in seconds relative to clip start"},
+                "interpolation": {"type": "string", "default": "LINEAR", "enum": ["LINEAR", "BEZIER", "HOLD", "EASE_IN", "EASE_OUT"]},
                 "componentName": {"type": "string", "default": None, "description": "Optional: Name of the effect/component containing the parameter"},
                 "excludeBuiltIn": {"type": "boolean", "default": True, "description": "Whether to exclude built-in effects like Motion/Opacity"},
                 "modifications": {"type": "array", "default": None, "description": "For batch modification: array of {parameterName, value, componentName?} objects"}
             },
             "examples": [
                 "Set mosaic blocks to 20",
-                "Change blur to 100",
-                "Make horizontal blocks 15",
-                "Set opacity to 50"
+                "Increase blur from 0 to 50 over 2 seconds",
+                "Fade opacity to 0 at the end",
+                "Animate brightness from 0 to 100"
             ]
         },
         "getParameters": {

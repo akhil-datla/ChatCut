@@ -253,7 +253,7 @@ export const Container = () => {
         try {
           setIsProcessing(true);
           showLoadingIndicator();
-          aiResponse = await processPrompt(text);
+          aiResponse = await processPrompt(text, contextParams);
           console.log("[SelectClips] AI preview:", aiResponse);
         } catch (err) {
           // If AI fails, default to video clips
@@ -498,6 +498,7 @@ export const Container = () => {
         } else {
           // Regular native edits mode (editingMode === "none")
           aiResponse = await processPrompt(text, contextParams);
+          
         }
       }
       

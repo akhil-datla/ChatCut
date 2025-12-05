@@ -32,7 +32,7 @@ import {
 const actionRegistry = {
   /**
    * Zoom in on clip(s)
-   * Parameters: { endScale, startScale, animated, duration, interpolation }
+   * Parameters: { endScale, startScale, animated, duration, interpolation, startTime }
    */
   zoomIn: async (trackItems, parameters = {}) => {
     const isArray = Array.isArray(trackItems);
@@ -49,7 +49,7 @@ const actionRegistry = {
 
   /**
    * Zoom out on clip(s)
-   * Parameters: { endScale, startScale, animated, duration, interpolation }
+   * Parameters: { endScale, startScale, animated, duration, interpolation, startTime }
    */
   zoomOut: async (trackItems, parameters = {}) => {
     const isArray = Array.isArray(trackItems);
@@ -176,7 +176,18 @@ const actionRegistry = {
       return { successful, failed };
     } else {
       // Single parameter modification
-      const { parameterName, value, componentName, excludeBuiltIn = true } = parameters;
+      const { 
+        parameterName, 
+        value, 
+        componentName, 
+        excludeBuiltIn = true,
+        // Animation parameters
+        startValue,
+        animated,
+        duration,
+        startTime,
+        interpolation
+      } = parameters;
       
       if (!parameterName) {
         throw new Error("modifyParameter requires parameterName");
@@ -195,7 +206,13 @@ const actionRegistry = {
             parameterName,
             value,
             componentName,
-            excludeBuiltIn
+            excludeBuiltIn,
+            // Pass animation parameters
+            startValue,
+            animated,
+            duration,
+            startTime,
+            interpolation
           });
           if (result) successful++;
           else failed++;
