@@ -1,0 +1,105 @@
+/**
+ * SendInput styles - native elements for UXP compatibility
+ */
+.send-input-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Text input */
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--spectrum-gray-100);
+  border: 1px solid var(--spectrum-gray-300);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.chat-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.chat-input:hover:not(:disabled) {
+  border-color: var(--spectrum-gray-400);
+}
+
+.chat-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 1px var(--accent-color);
+}
+
+.chat-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Send button */
+.send-button {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.send-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+.send-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.send-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Undo button */
+.undo-button {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--spectrum-gray-200);
+  border: 1px solid var(--spectrum-gray-300);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.undo-button:hover:not(:disabled):not(.disabled) {
+  background: var(--spectrum-gray-300);
+  border-color: var(--spectrum-gray-400);
+}
+
+.undo-button:active:not(:disabled):not(.disabled) {
+  transform: scale(0.98);
+}
+
+.undo-button.disabled,
+.undo-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

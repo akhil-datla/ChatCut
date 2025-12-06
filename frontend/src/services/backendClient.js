@@ -240,10 +240,14 @@ async function startColabJob(filePath, prompt, colabUrl, trimInfo = null) {
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    const errorText = await response.text();
+    console.error(`[Colab] HTTP error ${response.status}:`, errorText);
+    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText.substring(0, 200)}`);
   }
 
-  return response.json();
+  const result = await response.json();
+  console.log("[Colab] Start job response:", result);
+  return result;
 }
 
 /**
@@ -310,7 +314,9 @@ export async function processWithColabStream(filePath, prompt, colabUrl, onProgr
 
   if (startResult.error) {
     console.error("[Colab] Start job error:", startResult);
-    throw new Error(startResult.message || startResult.error);
+    console.error("[Colab] Full error details:", JSON.stringify(startResult, null, 2));
+    const errorMsg = startResult.message || startResult.error || "Unknown error";
+    throw new Error(`Colab processing failed: ${errorMsg}`);
   }
 
   const jobId = startResult.job_id;

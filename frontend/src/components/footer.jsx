@@ -81,14 +81,14 @@ const MagicWandIcon = () => (
 
     {/* Four-point twinkle star 2 (upper right) — moved farther from wand tip */}
     <path
-      d="M21.0 0.4
-         L21.6 2.2
-         L23.4 2.8
-         L21.6 3.4
-         L21.0 5.2
-         L20.4 3.4
-         L18.6 2.8
-         L20.4 2.2
+      d="M17.0 0.4
+         L17.6 2.2
+         L19.4 2.8
+         L17.6 3.4
+         L17.0 5.2
+         L16.4 3.4
+         L14.6 2.8
+         L16.4 2.2
          Z"
       fill="white"
     />
