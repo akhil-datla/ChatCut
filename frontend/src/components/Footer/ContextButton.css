@@ -1,0 +1,152 @@
+/**
+ * ContextButton styles
+ */
+.context-button-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+/* Context chips */
+.context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 200px;
+}
+
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(20, 115, 230, 0.2);
+  border: 1px solid rgba(20, 115, 230, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px 3px 8px;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  max-width: 120px;
+}
+
+.chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+
+.chip-remove:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Plus button */
+.context-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--spectrum-gray-200);
+  border: 1px solid var(--spectrum-gray-300);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.context-btn:hover:not(:disabled) {
+  background: var(--spectrum-gray-300);
+  transform: scale(1.05);
+}
+
+.context-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.context-btn.active {
+  background: var(--spectrum-gray-400);
+}
+
+.context-btn.has-context {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+.context-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dropdown */
+.context-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: var(--spectrum-gray-75);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 160px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 4px;
+  animation: dropdownFadeIn 0.15s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.dropdown-item:hover:not(.disabled) {
+  background: var(--accent-color);
+  color: white;
+}
+
+.dropdown-item.selected {
+  background: rgba(20, 115, 230, 0.25);
+}
+
+.dropdown-item.disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+

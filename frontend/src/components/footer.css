@@ -430,7 +430,7 @@
 }
 
 .send-btn { 
-  padding: 10px 16px;
+  padding: 10px 12px;
   background-color: var(--color-accent-blue);
   border: none;
   color: white;
@@ -495,7 +495,7 @@
 
 /* Undo Button Styles */
 .undo-btn { 
-  padding: 10px 16px;
+  padding: 10px 12px;
   background-color: var(--color-accent-blue);
   border: none;
   color: white;

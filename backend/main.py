@@ -11,12 +11,19 @@ from models.schemas import (
     ProcessMediaRequest,
     ProcessMediaResponse,
     ProcessObjectTrackingRequest,
-    ProcessObjectTrackingResponse
+    ProcessObjectTrackingResponse,
+    ColabStartRequest,
+    ColabStartResponse,
+    ColabProgressRequest,
+    ColabProgressResponse,
+    ColabHealthRequest,
+    ColabHealthResponse
 )
 from services.ai_service import process_prompt
 
 from services.providers.video_provider import process_media
 from services.providers.object_tracking_provider import process_object_tracking
+from services.colab_proxy import start_colab_job, get_colab_progress, check_colab_health
 
 # Load environment variables
 load_dotenv()
@@ -147,6 +154,90 @@ async def process_object_tracking_endpoint(request: ProcessObjectTrackingRequest
     print(f"[Object Tracking] Result: action={result.get('action')}")
     
     return ProcessObjectTrackingResponse(**result)
+
+
+@app.post("/api/colab-start", response_model=ColabStartResponse)
+async def colab_start_endpoint(request: ColabStartRequest):
+    """
+    Start a Colab processing job by uploading video file and prompt.
+    Proxies request to Colab server.
+    """
+    print(f"[Colab] Starting job: {request.file_path}")
+    print(f"[Colab] Prompt: {request.prompt}")
+    print(f"[Colab] Colab URL: {request.colab_url}")
+    
+    # Validate file access
+    file_path = request.file_path
+    try:
+        if not Path(file_path).exists():
+            return ColabStartResponse(
+                job_id=None,
+                status="error",
+                message=f"File not found: {file_path}",
+                error="FILE_NOT_FOUND"
+            )
+        
+        if not os.access(file_path, os.R_OK):
+            return ColabStartResponse(
+                job_id=None,
+                status="error",
+                message=f"Cannot read file: {file_path}",
+                error="FILE_ACCESS_ERROR"
+            )
+        
+        print(f"  ✓ {Path(file_path).name}")
+        
+    except Exception as e:
+        print(f"  ✗ {file_path}: {e}")
+        return ColabStartResponse(
+            job_id=None,
+            status="error",
+            message=f"Error accessing file: {str(e)}",
+            error="FILE_ACCESS_ERROR"
+        )
+    
+    # Prepare trim info if provided
+    trim_info = None
+    if request.trim_start is not None and request.trim_end is not None:
+        trim_info = {
+            "trim_start": request.trim_start,
+            "trim_end": request.trim_end
+        }
+        print(f"  Trim info: {request.trim_start:.2f}s - {request.trim_end:.2f}s")
+    
+    # Start Colab job
+    result = start_colab_job(file_path, request.prompt, request.colab_url, trim_info)
+    print(f"[Colab] Start result: job_id={result.get('job_id')}, status={result.get('status')}")
+    
+    return ColabStartResponse(**result)
+
+
+@app.post("/api/colab-progress", response_model=ColabProgressResponse)
+async def colab_progress_endpoint(request: ColabProgressRequest):
+    """
+    Get progress status for a Colab job.
+    Proxies request to Colab server and downloads video when complete.
+    """
+    print(f"[Colab] Checking progress: job_id={request.job_id}")
+    
+    result = get_colab_progress(request.job_id, request.colab_url, request.original_filename)
+    print(f"[Colab] Progress result: status={result.get('status')}, progress={result.get('progress')}%")
+    
+    return ColabProgressResponse(**result)
+
+
+@app.post("/api/colab-health", response_model=ColabHealthResponse)
+async def colab_health_endpoint(request: ColabHealthRequest):
+    """
+    Check if Colab server is healthy and reachable.
+    Proxies health check request to Colab server.
+    """
+    print(f"[Colab] Health check: {request.colab_url}")
+    
+    result = check_colab_health(request.colab_url)
+    print(f"[Colab] Health result: healthy={result.get('healthy')}")
+    
+    return ColabHealthResponse(**result)
 
 
 @app.get("/health")

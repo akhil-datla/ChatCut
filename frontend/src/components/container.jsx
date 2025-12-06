@@ -490,11 +490,6 @@ export const Container = () => {
           if (aiResponse.output_path && aiResponse.original_path) {
             await replaceClipWithProcessed(trackItems, aiResponse, writeToConsole);
           }
-        } else if (editingMode === "object_tracking") {
-          // Object tracking mode - not yet implemented (teammate will add backend)
-          hideLoadingIndicator();
-          writeToConsole("⚠️ Object Tracking Mode is not yet available. This feature will be implemented soon.");
-          return;
         } else {
           // Regular native edits mode (editingMode === "none")
           aiResponse = await processPrompt(text, contextParams);

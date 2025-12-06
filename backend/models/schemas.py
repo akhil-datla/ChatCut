@@ -58,3 +58,50 @@ class ProcessObjectTrackingResponse(BaseModel):
     tracked_objects: Optional[List[Dict[str, Any]]] = None  # List of tracked objects with positions
     tracking_data: Optional[Dict[str, Any]] = None  # Frame-by-frame tracking data
 
+
+class ColabStartRequest(BaseModel):
+    """Request model for starting a Colab processing job"""
+    file_path: str
+    prompt: str
+    colab_url: str
+    trim_start: Optional[float] = None
+    trim_end: Optional[float] = None
+
+
+class ColabStartResponse(BaseModel):
+    """Response model for Colab job start"""
+    job_id: Optional[str] = None
+    status: str
+    message: str
+    error: Optional[str] = None
+
+
+class ColabProgressRequest(BaseModel):
+    """Request model for checking Colab job progress"""
+    job_id: str
+    colab_url: str
+    original_filename: str = "video"
+
+
+class ColabProgressResponse(BaseModel):
+    """Response model for Colab job progress"""
+    status: str  # "processing" | "complete" | "error"
+    stage: str
+    progress: float  # 0-100
+    message: str
+    output_path: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ColabHealthRequest(BaseModel):
+    """Request model for Colab server health check"""
+    colab_url: str
+
+
+class ColabHealthResponse(BaseModel):
+    """Response model for Colab server health check"""
+    healthy: bool
+    status: str
+    gpu: Optional[str] = None
+    error: Optional[str] = None
+
