@@ -60,13 +60,6 @@ class GeminiProvider(AIProvider):
             ).to_dict()
         
         try:
-            # Small talk short-circuit (no model call needed)
-            small_talk_msg = self._small_talk_reply(user_prompt)
-            if small_talk_msg:
-                return AIProviderResult.failure(
-                    message=small_talk_msg,
-                    error="SMALL_TALK"
-                ).to_dict()
 
             # Get Gemini model (strip "models/" prefix if present, GenerativeModel adds it)
             model_name = self.model_name.replace("models/", "") if self.model_name.startswith("models/") else self.model_name
@@ -749,28 +742,5 @@ SMALL TALK (greetings/chit-chat):
         ]
         return any(keyword in text for keyword in audio_keywords)
     
-    def _small_talk_reply(self, user_prompt: Optional[str]) -> Optional[str]:
-        """Return a friendly small-talk reply if the prompt is chit-chat; otherwise None."""
-        if not user_prompt:
-            return None
-        text = user_prompt.strip().lower()
-        # Simple heuristics for greetings/thanks/salutations
-        patterns = [
-            r"\bhi\b",
-            r"\bhello\b",
-            r"\bhey\b",
-            r"\bhiya\b",
-            r"\byo\b",
-            r"\bsup\b",
-            r"\bgood\s+(morning|afternoon|evening|night)\b",
-            r"\bhow\s+are\s+you\b",
-            r"\bthank(s|\s+you)\b",
-        ]
-        for pat in patterns:
-            if re.search(pat, text):
-                return (
-                    "Hi! I'm ChatCut. I can edit your video with plain-English requests. "
-                    "Try: 'zoom in by 120%', 'apply cross dissolve', or 'add blur 30'."
-                )
-        return None
+
 
