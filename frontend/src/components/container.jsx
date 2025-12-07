@@ -24,7 +24,8 @@ export const Container = () => {
 
   // Colab mode state
   const [colabMode, setColabMode] = useState(false);
-  const [colabUrl, setColabUrl] = useState("");
+  // Hardcoded for demo - update this when ngrok URL changes
+  const [colabUrl, setColabUrl] = useState("https://c4f2f8abf50e.ngrok-free.app");
 
   // Progress tracking for Colab processing
   const [processingProgress, setProcessingProgress] = useState(null); // null when not processing, 0-100 when active
@@ -452,7 +453,10 @@ export const Container = () => {
             }
 
             // Use shared helper for clip replacement (same as Runway)
-            await replaceClipWithProcessed(trackItems, colabResponse, writeToConsole);
+            const replaced = await replaceClipWithProcessed(trackItems, colabResponse, writeToConsole);
+            if (replaced) {
+              writeToConsole("✅ Processing complete! Clip replaced.");
+            }
           } catch (err) {
             // Clear progress bar on error
             setProcessingProgress(null);

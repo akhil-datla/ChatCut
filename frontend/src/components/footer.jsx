@@ -399,19 +399,7 @@ export const Footer = (props) => {
           </div>
         )}
 
-        {/* Colab URL Input - shown when Object Tracking mode is active (always uses Colab) */}
-        {props.editingMode === 'object_tracking' && (
-          <div className="colab-url-bar">
-            <span className="colab-label">🔗 Colab URL:</span>
-            <input
-              className="colab-url-input"
-              type="text"
-              value={props.colabUrl || ""}
-              placeholder="https://xxxxx.ngrok.io"
-              onChange={handleColabUrlChange}
-            />
-          </div>
-        )}
+        {/* Colab URL Input removed - hardcoded in container.jsx for demo */}
 
         {/* Row 1: Context chips (when selected) */}
         {selectedContexts.length > 0 && (
@@ -512,10 +500,16 @@ export const Footer = (props) => {
               class="mode-selector-button"
               onClick={handleModeButtonClick}
               onBlur={handleModeButtonBlur}
-              title={currentModeLabel}
+              title={currentMode === 'object_tracking' ? (colabConnected === true ? `${currentModeLabel} (Connected)` : colabConnected === false ? `${currentModeLabel} (Disconnected)` : `${currentModeLabel} (Checking...)`) : currentModeLabel}
               aria-label={`Current mode: ${currentModeLabel}. Click to change mode.`}
+              style={currentMode === 'object_tracking' ? {
+                borderColor: colabConnected === true ? '#22c55e' : colabConnected === false ? '#ef4444' : undefined,
+                boxShadow: colabConnected === true ? '0 0 8px rgba(34, 197, 94, 0.4)' : colabConnected === false ? '0 0 8px rgba(239, 68, 68, 0.4)' : undefined
+              } : {}}
             >
-              <span className="mode-icon-wrap">
+              <span className="mode-icon-wrap" style={currentMode === 'object_tracking' ? {
+                color: colabConnected === true ? '#22c55e' : colabConnected === false ? '#ef4444' : 'white'
+              } : {}}>
                 <CurrentModeIcon />
               </span>
             </sp-button>
@@ -554,11 +548,13 @@ export const Footer = (props) => {
             </svg>
           </sp-button>
           <sp-button
-            className={`send-btn ${props.isProcessing ? 'processing' : ''}`}
+            key={draft.trim() ? "send-active" : "send-inactive"}
+            className="send-btn"
+            variant={draft.trim() ? "cta" : "secondary"}
             aria-label={props.isProcessing ? "Processing..." : "Send message"}
             title={props.isProcessing ? "Processing..." : "Send"}
-            onClick={handleSend}
             disabled={props.isProcessing || !draft.trim()}
+            onClick={handleSend}
           >
             {props.isProcessing ? (
               <div className="spinner-small"></div>
