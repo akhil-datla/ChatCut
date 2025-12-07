@@ -53,8 +53,10 @@ backend/output/
 .claude-flow/
 .swarm/
 .mcp.json
-CLAUDE.md
-plan.md
+
+# Root-level markdown files (except COLAB_GUIDE.md)
+/*.md
+!COLAB_GUIDE.md
 
 # Test media files
 *.mp4
