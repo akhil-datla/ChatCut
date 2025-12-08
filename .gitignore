@@ -38,4 +38,32 @@ zip
 src/hybrid/win/.vs
 
 .env
+.env.bak
 scripts/mac-sign.sh
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Backend output
+backend/output/
+
+# Claude Code / AI tools
+.claude/
+.claude-flow/
+.swarm/
+.mcp.json
+
+# Root-level markdown files (except COLAB_GUIDE.md)
+/*.md
+!COLAB_GUIDE.md
+
+# Test media files
+*.mp4
+*.webm
+*.mov
+
+# Misc
+*.zip
+*.pdf
+nul

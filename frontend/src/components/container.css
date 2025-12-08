@@ -1,0 +1,26 @@
+/* 
+ * Container Component Styles
+ * Main plugin container layout
+ */
+
+.plugin-container {
+  background-color: var(--color-bg-dark);
+  color: var(--color-text-offwhite);
+  padding: 0; /* edge-to-edge */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 300px;
+  min-height: 300px;
+  box-sizing: border-box;
+}
+
+.plugin-container > sp-body {
+  flex: 0 0 auto;
+}
+
+.plugin-container > .plugin-content,
+.plugin-container > div.plugin-content {
+  flex: 1 1 auto;
+}
+

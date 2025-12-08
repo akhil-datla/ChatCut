@@ -1,0 +1,52 @@
+/**
+ * ModeSelector styles - native select styled for Premiere Pro dark theme
+ */
+.mode-selector {
+  flex-shrink: 0;
+}
+
+.mode-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--spectrum-gray-100);
+  border: 1px solid var(--spectrum-gray-300);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  padding: 6px 28px 6px 10px;
+  cursor: pointer;
+  outline: none;
+  min-width: 130px;
+  
+  /* Custom dropdown arrow */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%23b3b3b3'%3E%3Cpath d='M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: all 0.15s ease;
+}
+
+.mode-select:hover:not(:disabled) {
+  background-color: var(--spectrum-gray-200);
+  border-color: var(--spectrum-gray-400);
+}
+
+.mode-select:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 1px var(--accent-color);
+}
+
+.mode-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-select option {
+  background: var(--spectrum-gray-75);
+  color: var(--text-primary);
+  padding: 8px;
+}
+
+.mode-select option:disabled {
+  color: var(--text-disabled);
+}

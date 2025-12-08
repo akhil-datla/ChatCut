@@ -58,3 +58,40 @@
 }
 
 .bubble-text { white-space: pre-wrap; }
+
+/* Loading dots animation */
+.loading-container {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.loading-dots-text {
+  display: inline-block;
+  margin-left: 2px;
+  min-width: 20px; /* Prevent layout shift */
+}
+
+/* Typing animation */
+.typing-in-progress {
+  display: inline-block;
+}
+
+.typing-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink-cursor 1s infinite;
+  color: var(--color-bubble-bot-text, currentColor);
+}
+
+.typing-complete {
+  display: inline-block;
+}
+
+@keyframes blink-cursor {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}

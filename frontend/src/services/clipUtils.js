@@ -375,6 +375,50 @@ export async function logClipInfo(trackItem) {
 
 
 /**
+ * Get clip timing info for server-side trimming.
+ * Returns SOURCE timestamps (in/out points in the original media file),
+ * NOT timeline positions. This is what FFmpeg needs for trimming.
+ * @param {TrackItem} trackItem - Premiere Pro TrackItem
+ * @returns {Promise<{filePath: string, inPoint: number, outPoint: number, duration: number}|null>}
+ */
+export async function getClipTimingInfo(trackItem) {
+  try {
+    // getInPoint/getOutPoint return SOURCE timestamps (for trimming)
+    // This is different from getStartTime/getEndTime which return TIMELINE positions
+    const inPoint = await trackItem.getInPoint();
+    const outPoint = await trackItem.getOutPoint();
+
+    const projectItem = await trackItem.getProjectItem();
+    const clipProjectItem = ppro.ClipProjectItem.cast(projectItem);
+
+    if (!clipProjectItem) {
+      log("getClipTimingInfo: Failed to cast to ClipProjectItem", "red");
+      return null;
+    }
+
+    const filePath = await clipProjectItem.getMediaFilePath();
+
+    if (!filePath) {
+      log("getClipTimingInfo: No media file path found", "red");
+      return null;
+    }
+
+    const result = {
+      filePath: filePath,
+      inPoint: inPoint.seconds,
+      outPoint: outPoint.seconds,
+      duration: outPoint.seconds - inPoint.seconds
+    };
+
+    log(`Clip timing: ${result.inPoint.toFixed(2)}s - ${result.outPoint.toFixed(2)}s (${result.duration.toFixed(2)}s)`, "blue");
+    return result;
+  } catch (err) {
+    log(`Error getting clip timing info: ${err}`, "red");
+    return null;
+  }
+}
+
+/**
  * Return all media file paths from the current Project panel selection.
  * @param {Project} project
  * @param {{ includeSequence?: boolean }} options
@@ -486,42 +530,26 @@ export async function replaceClipMedia(trackItem, newMediaPath) {
       return false;
     }
     
-    // Replace the original project item's media path with the new one
-    log("Changing media path of original project item", "blue");
-    
-    // Use changeMediaFilePath to relink the existing project item to the new file
-    // createRemoveItemsAction(trackItemSelection: TrackItemSelection, ripple: boolean, mediaType: Constants.MediaType, shiftOverLapping?: boolean)
+    // Replace the timeline clip with the new media using overwrite
+    log("Overwriting timeline clip with new media", "blue");
+
     const sequence = await project.getActiveSequence();
     const sequenceEditor = ppro.SequenceEditor.getEditor(sequence);
-    const index = await trackItem.getTrackIndex();
     const startTime = await trackItem.getStartTime();
-    project.lockedAccess(() => {
-        project.executeTransaction((compoundAction) => {
-          const insertItemAction = sequenceEditor.createOverwriteItemAction(
-            newProjectItem, // reference for creating trackItem for overwrite
-            startTime, // time
-            index, // video track index
-            index
-          );
-          compoundAction.addAction(insertItemAction);
-        }, "TrackItem Inserted");
+
+    // Use the trackIndex we already got at the start
+    await project.lockedAccess(async () => {
+      await project.executeTransaction((compoundAction) => {
+        const insertItemAction = sequenceEditor.createOverwriteItemAction(
+          newProjectItem, // The newly imported media
+          startTime,      // Same start time as original clip
+          trackIndex,     // Video track index
+          trackIndex      // Audio track index (same for linked clips)
+        );
+        compoundAction.addAction(insertItemAction);
+      }, "Replace clip with processed video");
     });
-    const track = await sequence.getVideoTrack(trackIndex);
-    const trackItems = await track.getTrackItems(
-            ppro.Constants.TrackItemType.CLIP, 
-            false  
-          );
-    const replacedVideoClip = trackItems[index]
 
-    await zoomIn(replacedVideoClip, { endScale: 150});
-
-
-    
-    if (!changed) {
-      log("Failed to change media file path", "red");
-      return false;
-    }
-    
     log("✓ Successfully replaced clip media", "green");
     return true;
     

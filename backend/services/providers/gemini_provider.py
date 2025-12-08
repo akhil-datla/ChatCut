@@ -61,13 +61,6 @@ class GeminiProvider(AIProvider):
             ).to_dict()
         
         try:
-            # Small talk short-circuit (no model call needed)
-            small_talk_msg = self._small_talk_reply(user_prompt)
-            if small_talk_msg:
-                return AIProviderResult.failure(
-                    message=small_talk_msg,
-                    error="SMALL_TALK"
-                ).to_dict()
 
             # PRE-CHECK: Handle simple volume requests without API call (avoids rate limits and ensures defaults)
             prompt_l = (user_prompt or "").lower().strip()
@@ -407,7 +400,7 @@ Available actions:
 - applyFilter: Apply a video filter (parameters: filterName)
 - applyTransition: Apply a transition (parameters: transitionName, duration)
 - applyBlur: Apply Gaussian blur (parameters: blurAmount)
-- modifyParameter: Modify effect parameter after effect is applied (parameters: parameterName, value, componentName)
+- modifyParameter: Modify effect parameter after effect is applied (parameters: parameterName, value, startValue, animated, duration, startTime, interpolation, componentName)
 - getParameters: List all available parameters on selected clip (no parameters required)
 - applyAudioFilter: Apply an audio effect/filter to an audio clip (parameters: filterDisplayName)
 - adjustVolume: Adjust volume of an audio clip (parameters: volumeDb)
@@ -421,11 +414,14 @@ Parameters (zoom):
   * Only extract when user specifies both start and end: "from X% to Y%", "X% to Y%"
   * Otherwise, use the default (100 for zoomIn, 150 for zoomOut)
 - animated: Whether to animate the zoom over time (TRUE = gradual/animated, FALSE = static/instant)
-  * TRUE when: "slow", "gradual", "animate", "over time", "smooth", "from X to Y"
-  * FALSE when: "entire clip", "throughout", "static", or simple "zoom in/out X%" (default)
+  * TRUE when: "slow", "gradual", "animate", "over time", "smooth", "from X to Y", "quickly", "fast", "zoom in/out" (motion implied)
+  * FALSE only when: "entire clip", "throughout", "set scale to", "static", "constant", "cut to"
+  * Default to TRUE if user implies movement (most "zoom" commands imply movement)
 - duration: Duration of the zoom animation in seconds (optional, uses entire clip duration if not specified)
   * Extract from: "over 2 seconds", "for 3 seconds", "2 second zoom", "zoom for 1s"
-  * Only specify when user explicitly mentions duration
+  * "quickly" / "fast" → 0.5
+  * "slowly" / "slow" → 3.0 or 5.0
+  * Only specify when user explicitly mentions duration or speed
   * Leave null/omit to use the full clip duration (most common)
 - startTime: Time offset from clip start in seconds (default: 0, starts at beginning of clip)
   * Extract from: "start at 2 seconds", "begin zoom at 1.5s", "zoom starting at 3s"
@@ -483,6 +479,32 @@ STATIC/Instant Zoom (animated: false):
   - "entire clip zoomed in to 120%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 120}}
   - "keep the whole clip at 150%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 150}}
   - "zoom in to 120%" → {"action": "zoomIn", "parameters": {"animated": false, "endScale": 120}}
+
+SEQUENTIAL/CHAINED ZOOM (e.g. "zoom in then out"):
+- Split the request into multiple actions
+- MUST specify 'duration' for EACH action in the chain to prevent overlaps
+- Calculate 'startTime' for each subsequent action based on the duration of the previous one
+- Ensure 'startScale' of the next action matches 'endScale' of the previous one
+- Example: "zoom in to 150% over 2 seconds then back to 100% over 2 seconds"
+  1. Action 1: zoomIn { endScale: 150, duration: 2.0, startTime: 0, animated: true }
+  2. Action 2: zoomOut { startScale: 150, endScale: 100, duration: 2.0, startTime: 2.0, animated: true }
+- Example: "zoom in quickly then slow zoom out"
+  1. Action 1: zoomIn { endScale: 150, duration: 0.5, startTime: 0, animated: true } (quick)
+  2. Action 2: zoomOut { startScale: 150, endScale: 100, duration: 5.0, startTime: 0.5, animated: true } (slow)
+
+LOOPS / REPETITION (e.g. "pulse", "zoom in and out 5 times"):
+- Calculate the duration per step
+- Example: "zoom in and out 3 times over 6 seconds"
+  - Total time: 6s. Cycles: 3. Time per cycle: 2s.
+  - Each cycle has 2 steps (in, out). Step duration: 1s.
+  - Generate ALL actions explicitly:
+  1. zoomIn { startScale: 100, endScale: 120, duration: 1.0, startTime: 0, animated: true }
+  2. zoomOut { startScale: 120, endScale: 100, duration: 1.0, startTime: 1.0, animated: true }
+  3. zoomIn { startScale: 100, endScale: 120, duration: 1.0, startTime: 2.0, animated: true }
+  4. zoomOut { startScale: 120, endScale: 100, duration: 1.0, startTime: 3.0, animated: true }
+  5. zoomIn { startScale: 100, endScale: 120, duration: 1.0, startTime: 4.0, animated: true }
+  6. zoomOut { startScale: 120, endScale: 100, duration: 1.0, startTime: 5.0, animated: true }
+- For "pulse" or "heartbeat", assume 3-5 cycles if not specified.
 
 NUMBER EXTRACTION RULES:
 - Extract scale percentages: "120%", "150 percent", "1.5x", "double" (200%), "triple" (300%)
@@ -785,8 +807,17 @@ Parameters:
 - parameterName: Name of the parameter to modify (fuzzy matched, case-insensitive)
   * Extract from: "set X to Y", "change X to Y", "make X equal Y", "adjust X to Y"
   * Common parameter names: "Horizontal Blocks", "Vertical Blocks", "Blurriness", "Opacity", "Scale", "Position", "Rotation"
-- value: New numeric value for the parameter
+- value: Target numeric value (or end value if animated)
   * Extract the number from the user's request
+- startValue: (Optional) Starting value for animation
+  * Extract from "from X to Y" (X is startValue)
+- animated: (Boolean) Whether to animate the change (default: false)
+  * true if user says "gradually", "over time", "slowly", "fade", "animate", "from X to Y"
+- duration: (Optional) Duration of the animation in seconds
+  * Extract from "over 2 seconds", "for 3s"
+- startTime: (Optional) Start time offset in seconds relative to clip start
+  * Extract from "starting at 2s", "begin at 1.5s"
+- interpolation: (Optional) Animation curve ('LINEAR', 'BEZIER', 'HOLD', 'EASE_IN', 'EASE_OUT')
 - componentName: (Optional) Name of the effect containing the parameter
   * Only specify if user mentions the effect name: "set blur amount to 100", "change mosaic blocks to 20"
   * Common component names: "Mosaic", "Gaussian Blur", "Motion", "Opacity"
@@ -796,8 +827,9 @@ Parameters:
 Examples:
 - "set mosaic blocks to 20" → {"action": "modifyParameter", "parameters": {"parameterName": "Horizontal Blocks", "value": 20, "componentName": "Mosaic"}}
 - "change blur to 100" → {"action": "modifyParameter", "parameters": {"parameterName": "Blurriness", "value": 100}}
-- "make horizontal blocks 15" → {"action": "modifyParameter", "parameters": {"parameterName": "Horizontal Blocks", "value": 15}}
-- "set vertical blocks to 30" → {"action": "modifyParameter", "parameters": {"parameterName": "Vertical Blocks", "value": 30}}
+- "increase blur from 0 to 50 over 2 seconds" → {"action": "modifyParameter", "parameters": {"parameterName": "Blurriness", "startValue": 0, "value": 50, "duration": 2.0, "animated": true}}
+- "fade opacity to 0 starting at 3 seconds" → {"action": "modifyParameter", "parameters": {"parameterName": "Opacity", "value": 0, "startTime": 3.0, "animated": true, "excludeBuiltIn": false}}
+- "animate distortion from 0 to 100" → {"action": "modifyParameter", "parameters": {"parameterName": "Distortion", "startValue": 0, "value": 100, "animated": true}}
 
 GET PARAMETERS examples:
 - "what parameters can I change?" → {"action": "getParameters", "parameters": {}}
@@ -987,28 +1019,5 @@ SMALL TALK (greetings/chit-chat):
         ]
         return any(keyword in text for keyword in audio_keywords)
     
-    def _small_talk_reply(self, user_prompt: Optional[str]) -> Optional[str]:
-        """Return a friendly small-talk reply if the prompt is chit-chat; otherwise None."""
-        if not user_prompt:
-            return None
-        text = user_prompt.strip().lower()
-        # Simple heuristics for greetings/thanks/salutations
-        patterns = [
-            r"\bhi\b",
-            r"\bhello\b",
-            r"\bhey\b",
-            r"\bhiya\b",
-            r"\byo\b",
-            r"\bsup\b",
-            r"\bgood\s+(morning|afternoon|evening|night)\b",
-            r"\bhow\s+are\s+you\b",
-            r"\bthank(s|\s+you)\b",
-        ]
-        for pat in patterns:
-            if re.search(pat, text):
-                return (
-                    "Hi! I'm ChatCut. I can edit your video with plain-English requests. "
-                    "Try: 'zoom in by 120%', 'apply cross dissolve', or 'add blur 30'."
-                )
-        return None
+
 
