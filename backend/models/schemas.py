@@ -105,3 +105,18 @@ class ColabHealthResponse(BaseModel):
     gpu: Optional[str] = None
     error: Optional[str] = None
 
+
+class AskQuestionRequest(BaseModel):
+    """Request model for asking Premiere Pro questions"""
+    messages: List[Dict[str, str]]  # List of {role: str, content: str}
+    
+    class Config:
+        # Allow extra fields but ignore them (defensive - in case frontend sends id, timestamp, etc.)
+        extra = "ignore"
+
+
+class AskQuestionResponse(BaseModel):
+    """Response model for Premiere Pro question answers"""
+    message: str
+    error: Optional[str] = None
+

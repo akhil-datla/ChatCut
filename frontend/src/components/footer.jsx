@@ -123,6 +123,21 @@ const MagicWandIcon = () => (
   </svg>
 );
 
+const QuestionIcon = () => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg"
+    className="mode-icon-svg" 
+    viewBox="0 0 24 24" 
+    width="20" 
+    height="20" 
+    fill="white"
+    role="img"
+    aria-hidden="true"
+  >
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+  </svg>
+);
+
 
 
 /**
@@ -131,7 +146,8 @@ const MagicWandIcon = () => (
 const MODE_ICON_COMPONENT = {
   'none': EditIcon,
   'object_tracking': BullseyeIcon,
-  'ai_video': MagicWandIcon
+  'ai_video': MagicWandIcon,
+  'questions': QuestionIcon
 };
 
 /**
@@ -141,7 +157,8 @@ const MODE_ICON_COMPONENT = {
 const MODE_LABEL = {
   'none': 'Native Edits',
   'object_tracking': 'Object Tracking',
-  'ai_video': 'AI Generation'
+  'ai_video': 'AI Generation',
+  'questions': 'Questions'
 };
 
 export const Footer = (props) => {
@@ -462,6 +479,7 @@ export const Footer = (props) => {
               const NoneIcon = MODE_ICON_COMPONENT['none'];
               const TrackingIcon = MODE_ICON_COMPONENT['object_tracking'];
               const AIIcon = MODE_ICON_COMPONENT['ai_video'];
+              const QuestionsIcon = MODE_ICON_COMPONENT['questions'];
               
               return (
               <div className="mode-selector-dropdown">
@@ -492,6 +510,15 @@ export const Footer = (props) => {
                     <AIIcon />
                     <span className="mode-option-text">{MODE_LABEL['ai_video']}</span>
                   </div>
+                <div 
+                  className={`mode-dropdown-option ${currentMode === 'questions' ? 'active' : ''}`}
+                  onClick={() => handleModeChange('questions')}
+                    onMouseDown={handleDropdownItemMouseDown}
+                  title="Ask questions about Premiere Pro workflows and features"
+                >
+                    <QuestionsIcon />
+                    <span className="mode-option-text">{MODE_LABEL['questions']}</span>
+                </div>
                 </div>
               );
             })()}
