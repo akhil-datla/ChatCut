@@ -1,0 +1,30 @@
+/**
+ * Header styles
+ */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel-background);
+  flex-shrink: 0;
+}
+
+.header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title-text {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--accent-color);
+  letter-spacing: 0.3px;
+}
+
+.title-tagline {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}

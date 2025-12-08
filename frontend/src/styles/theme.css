@@ -1,0 +1,144 @@
+/**
+ * ChatCut Theme - Spectrum-compatible CSS for Premiere Pro UXP
+ * Uses Spectrum design tokens that align with Premiere Pro's dark theme
+ */
+
+:root {
+  /* Gray scale - matches Premiere Pro dark theme */
+  --spectrum-gray-50: #1e1e1e;
+  --spectrum-gray-75: #252525;
+  --spectrum-gray-100: #2c2c2c;
+  --spectrum-gray-200: #3a3a3a;
+  --spectrum-gray-300: #4a4a4a;
+  --spectrum-gray-400: #5c5c5c;
+  --spectrum-gray-500: #6e6e6e;
+  --spectrum-gray-600: #909090;
+  --spectrum-gray-700: #b3b3b3;
+  --spectrum-gray-800: #d5d5d5;
+  --spectrum-gray-900: #ffffff;
+
+  /* Blue accent - Premiere Pro style */
+  --spectrum-blue-400: #2680eb;
+  --spectrum-blue-500: #1473e6;
+  --spectrum-blue-600: #0d66d0;
+
+  /* Semantic tokens */
+  --panel-background: var(--spectrum-gray-50);
+  --panel-background-elevated: var(--spectrum-gray-75);
+  --panel-border: var(--spectrum-gray-200);
+  --panel-border-light: var(--spectrum-gray-100);
+  
+  --text-primary: var(--spectrum-gray-900);
+  --text-secondary: var(--spectrum-gray-700);
+  --text-disabled: var(--spectrum-gray-500);
+  
+  --accent-color: var(--spectrum-blue-500);
+  --accent-hover: var(--spectrum-blue-400);
+  --accent-active: var(--spectrum-blue-600);
+
+  /* Chat bubbles */
+  --bubble-user-bg: var(--spectrum-blue-500);
+  --bubble-user-text: #ffffff;
+  --bubble-bot-bg: var(--spectrum-gray-100);
+  --bubble-bot-text: var(--spectrum-gray-900);
+  --bubble-bot-border: var(--spectrum-gray-200);
+
+  /* Component sizing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  
+  --font-size-xs: 10px;
+  --font-size-sm: 12px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+}
+
+/* Base reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--panel-background);
+  color: var(--text-primary);
+  font-family: "Adobe Clean", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide scrollbars but keep functionality */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--spectrum-gray-400);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--spectrum-gray-500);
+}
+
+/* Spectrum component overrides for dark theme */
+sp-body {
+  color: var(--text-primary);
+}
+
+sp-button {
+  --spectrum-button-primary-background-color: var(--accent-color);
+  --spectrum-button-primary-background-color-hover: var(--accent-hover);
+  --spectrum-button-primary-background-color-down: var(--accent-active);
+}
+
+sp-textfield {
+  --spectrum-textfield-background-color: var(--panel-background-elevated);
+  --spectrum-textfield-border-color: var(--panel-border);
+}
+
+sp-picker {
+  --spectrum-picker-background-color: var(--panel-background-elevated);
+  --spectrum-picker-border-color: var(--panel-border);
+}
+
+sp-action-button {
+  --spectrum-actionbutton-background-color: transparent;
+  --spectrum-actionbutton-background-color-hover: var(--spectrum-gray-200);
+}
+
+/* Focus states */
+*:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Utility classes */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-row { flex-direction: row; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.gap-xs { gap: var(--spacing-xs); }
+.gap-sm { gap: var(--spacing-sm); }
+.gap-md { gap: var(--spacing-md); }
+.flex-1 { flex: 1 1 auto; }
+.flex-none { flex: 0 0 auto; }
+
+
