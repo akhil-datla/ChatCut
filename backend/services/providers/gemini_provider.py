@@ -1009,7 +1009,29 @@ SMALL TALK (greetings/chit-chat):
         """Check if the user prompt is audio-related"""
         if not user_prompt:
             return False
-        text = user_prompt.strip().lower()
+        
+        # Extract only the latest user message if this is a conversation history format
+        # This prevents error messages in conversation history from triggering audio routing
+        text = user_prompt.strip()
+        
+        # Check if this looks like conversation history (has "User:" patterns)
+        # Format from question_service: "User: <content>\n\nAssistant: <content>\n\n..."
+        if "User:" in text or "user:" in text.lower():
+            # Extract the last user message before the final "Assistant:" prompt
+            # Split by "User:" or "user:" and take the last one
+            # Find all user messages (case-insensitive)
+            user_messages = re.findall(r'(?:User|user):\s*(.*?)(?=\n\n(?:User|user|Assistant|assistant):|$)', text, re.DOTALL)
+            if user_messages:
+                # Use the last user message (most recent)
+                text = user_messages[-1].strip()
+            else:
+                # Fallback: try to find text after last "User:" or "user:"
+                last_user_match = re.search(r'(?:User|user):\s*(.*?)(?=\n\n(?:Assistant|assistant):|$)', text, re.DOTALL | re.IGNORECASE)
+                if last_user_match:
+                    text = last_user_match.group(1).strip()
+        
+        text = text.lower()
+        
         # Audio-related keywords
         audio_keywords = [
             "audio", "sound", "volume", "reverb", "eq", "equalizer", "equaliser",
