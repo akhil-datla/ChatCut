@@ -411,3 +411,49 @@ export async function checkColabHealth(colabUrl) {
     return false;
   }
 }
+
+/**
+ * Ask a Premiere Pro question
+ * 
+ * @param {Array} messages - Array of message objects {role: 'user'|'assistant', content: string}
+ * @returns {Promise<object>} Response with message content
+ */
+export async function askPremiereQuestion(messages) {
+  try {
+    // Send last 15 messages for context
+    const recentMessages = messages.slice(-15);
+    
+    // Strip to only role and content (remove id, timestamp, etc.) to match backend schema
+    const cleanedMessages = recentMessages.map(msg => ({
+      role: String(msg.role || 'user'),
+      content: String(msg.content || '')
+    }));
+    
+    const response = await fetch(`${BACKEND_URL}/api/ask-question`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: cleanedMessages
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[Backend] Question response:', data);
+    return data;
+  } catch (err) {
+    console.error('[Backend] Error asking question:', err.message);
+    
+    // Provide more helpful error messages
+    if (err.message.includes("Network request failed") || err.message.includes("Failed to fetch")) {
+      throw new Error("Backend server is not running. Please start the backend server on port 3001.");
+    }
+    
+    throw err;
+  }
+}

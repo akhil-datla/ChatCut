@@ -17,13 +17,16 @@ from models.schemas import (
     ColabProgressRequest,
     ColabProgressResponse,
     ColabHealthRequest,
-    ColabHealthResponse
+    ColabHealthResponse,
+    AskQuestionRequest,
+    AskQuestionResponse
 )
 from services.ai_service import process_prompt
 
 from services.providers.video_provider import process_media
 from services.providers.object_tracking_provider import process_object_tracking
 from services.colab_proxy import start_colab_job, get_colab_progress, check_colab_health
+from services.question_service import process_question
 
 # Load environment variables
 load_dotenv()
@@ -238,6 +241,20 @@ async def colab_health_endpoint(request: ColabHealthRequest):
     print(f"[Colab] Health result: healthy={result.get('healthy')}")
     
     return ColabHealthResponse(**result)
+
+
+@app.post("/api/ask-question", response_model=AskQuestionResponse)
+async def ask_question(request: AskQuestionRequest):
+    """
+    Answer Premiere Pro questions using AI.
+    Takes conversation history and returns helpful answer.
+    """
+    print(f"[Questions] Processing question: {len(request.messages)} messages")
+    
+    result = process_question(request.messages)
+    print(f"[Questions] Response generated")
+    
+    return AskQuestionResponse(**result)
 
 
 @app.get("/health")

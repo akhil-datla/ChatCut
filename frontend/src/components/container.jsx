@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { Content } from "./content";
 import { Footer } from "./footer";
 import { Header } from "./header";
+import { QuestionsMode } from "./modes/QuestionsMode";
 import { dispatchAction, dispatchActions } from "../services/actionDispatcher";
 import { getEffectParameters } from "../services/editingActions";
 import { processPrompt, processMedia, processWithColabStream } from "../services/backendClient";
@@ -19,8 +20,14 @@ export const Container = () => {
   // sequential reply index (loops when reaching the end)
   const replyIndexRef = useRef(0);
   
-  // Editing mode: "none" | "object_tracking" | "ai_video"
+  // Editing mode: "none" | "object_tracking" | "ai_video" | "questions"
   const [editingMode, setEditingMode] = useState("none");
+  
+  // Ref for QuestionsMode to call its handleSend method
+  const questionsModeRef = useRef(null);
+  
+  // Track QuestionsMode loading state
+  const [questionsModeLoading, setQuestionsModeLoading] = useState(false);
 
   // Colab mode state
   const [colabMode, setColabMode] = useState(false);
@@ -157,6 +164,19 @@ export const Container = () => {
 
   const onSend = (text, contextParams = null) => {
     if (!text || !text.trim()) return;
+    
+    // If in questions mode, route to QuestionsMode
+    if (editingMode === 'questions') {
+      if (questionsModeRef.current && questionsModeRef.current.handleSend) {
+        setQuestionsModeLoading(true);
+        questionsModeRef.current.handleSend(text).finally(() => {
+          setQuestionsModeLoading(false);
+        });
+      }
+      return;
+    }
+    
+    // Otherwise, use normal flow
     const userMsg = { id: `u-${Date.now()}`, sender: "user", text: text.trim() };
     addMessage(userMsg);
     selectClips(text, contextParams);
@@ -676,7 +696,11 @@ export const Container = () => {
   return (
       <div className="plugin-container">
         <Header />
-        <Content message={message} />
+        {editingMode === 'questions' ? (
+          <QuestionsMode ref={questionsModeRef} />
+        ) : (
+          <Content message={message} />
+        )}
           <Footer
             writeToConsole={writeToConsole}
           clearConsole={clearConsole}
@@ -693,7 +717,7 @@ export const Container = () => {
           processingProgress={processingProgress}
           processingMessage={processingMessage}
           processingStage={processingStage}
-          isProcessing={isProcessing}
+          isProcessing={editingMode === 'questions' ? questionsModeLoading : isProcessing}
         />
     </div>
   );
