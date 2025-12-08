@@ -277,35 +277,58 @@ export const Container = () => {
       }
       
       if (isAudioAction) {
-        // Get audio track items
-        const trackItems = await selection.getTrackItems(
+        // For audio actions, get clips directly from audio tracks only
+        // This ensures we never process video clips even if both are selected
+        const audioTrackCount = await sequence.getAudioTrackCount();
+        const allSelectedItems = await selection.getTrackItems(
           ppro.Constants.TrackItemType.CLIP, 
-          true  // true means include all clip types (we'll filter for audio)
+          true  // Get all clip types
         );
         
-        // Filter to audio clips only
+        console.log(`[SelectClips] Audio action detected. Found ${allSelectedItems.length} total selected clips. Audio tracks: ${audioTrackCount}`);
+        
+        // Get clips directly from audio tracks and check if they're in the selection
         const audioTrackItems = [];
-        for (let i = 0; i < trackItems.length; i++) {
+        const selectedClipIds = new Set();
+        
+        // First, collect IDs of selected clips for comparison
+        for (const item of allSelectedItems) {
           try {
-            const clip = trackItems[i];
-            // Try to get audio component chain - if it works, it's an audio clip
-            try {
-              const audioComponentChain = await clip.getComponentChain();
-              // Check if it's an audio clip by trying to get audio-specific properties
-              const mediaType = await clip.getMediaType();
-              // If we can get component chain without error, it might be audio
-              // More reliable: check if clip is on an audio track
-              const trackIndex = await clip.getTrackIndex();
-              const audioTrackCount = await sequence.getAudioTrackCount();
-              
-              if (trackIndex < audioTrackCount) {
-                audioTrackItems.push(clip);
+            const name = await item.getName();
+            const startTime = await item.getStartTime();
+            selectedClipIds.add(`${name}-${startTime.ticks}`);
+          } catch (err) {
+            // Skip if we can't get identifier
+          }
+        }
+        
+        // Now get clips from all audio tracks and check if they're selected
+        for (let trackIdx = 0; trackIdx < audioTrackCount; trackIdx++) {
+          try {
+            const audioTrack = await sequence.getAudioTrack(trackIdx);
+            const trackClips = await audioTrack.getTrackItems(
+              ppro.Constants.TrackItemType.CLIP,
+              false  // Don't include empty track items
+            );
+            
+            for (const clip of trackClips) {
+              try {
+                const name = await clip.getName();
+                const startTime = await clip.getStartTime();
+                const clipId = `${name}-${startTime.ticks}`;
+                
+                // Check if this clip is in the selection
+                if (selectedClipIds.has(clipId)) {
+                  audioTrackItems.push(clip);
+                  console.log(`[SelectClips] ✓ Found selected audio clip on track ${trackIdx}: ${name}`);
+                }
+              } catch (err) {
+                // Skip this clip
               }
-            } catch (err) {
-              // Not an audio clip, skip
             }
           } catch (err) {
-            // Skip this clip
+            // Skip this track
+            console.warn(`[SelectClips] Could not get audio track ${trackIdx}:`, err);
           }
         }
         
@@ -315,7 +338,8 @@ export const Container = () => {
           return;
         }
         
-        console.log("Select Audio Clips with prompt:", { trackItems: audioTrackItems, text });
+        console.log(`[SelectClips] Found ${audioTrackItems.length} selected audio clip(s) from ${allSelectedItems.length} total selected`);
+        writeToConsole(`🎵 Processing ${audioTrackItems.length} audio clip(s) (from ${allSelectedItems.length} selected)`);
         editClips(ppro, project, audioTrackItems, text, aiResponse, contextParams);
       } else {
         // Get video track items (default behavior)
@@ -589,7 +613,7 @@ export const Container = () => {
         
         // Report results with separate handling for audio vs video
         if (result.successful > 0) {
-          // Store edit in history for undo
+          // Store edit in history for undo (team's feature)
           const historyEntry = {
             actionName: aiResponse.action,
             trackItems: trackItems,
@@ -597,6 +621,7 @@ export const Container = () => {
             parameters: aiResponse.parameters || {}
           };
           setEditHistory(prev => [...prev, historyEntry]);
+          
           // Success - no need to show message, AI message was already shown
           if (result.failed > 0) {
             if (isAudioAction) {
@@ -606,6 +631,7 @@ export const Container = () => {
             }
           }
         } else {
+          // Only show error if ALL clips failed
           if (isAudioAction) {
             writeToConsole(`❌ Audio effect failed. Make sure you have audio clips selected and the requested audio filter is available.`);
           } else {

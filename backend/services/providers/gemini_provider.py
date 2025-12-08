@@ -6,6 +6,7 @@ Concrete implementation of AIProvider using Google's Gemini API.
 import os
 import json
 import re
+import time
 from typing import Dict, Any, Optional
 
 try:
@@ -61,6 +62,43 @@ class GeminiProvider(AIProvider):
         
         try:
 
+            # PRE-CHECK: Handle simple volume requests without API call (avoids rate limits and ensures defaults)
+            prompt_l = (user_prompt or "").lower().strip()
+            volume_keywords = ["volume", "louder", "quieter", "turn it up", "turn it down", "increase", "decrease", "adjust volume", "change volume"]
+            is_volume_request = any(keyword in prompt_l for keyword in volume_keywords)
+            
+            if is_volume_request:
+                # Check if user specified a number (like "3dB", "6 decibels", "by 5", etc.)
+                # Use regex to find numbers followed by optional "db", "decibel", "dB", etc.
+                import re
+                number_pattern = r'(\d+(?:\.\d+)?)\s*(?:db|decibel|decibels|dbs|dB)?'
+                numbers_found = re.findall(number_pattern, prompt_l)
+                
+                # If no explicit number found, use defaults
+                if not numbers_found:
+                    # Determine direction and amount
+                    if any(word in prompt_l for word in ["increase", "louder", "up", "raise", "boost"]):
+                        volume_db = 3  # Default increase
+                        if any(word in prompt_l for word in ["lot", "much", "significantly", "a lot", "way"]):
+                            volume_db = 6  # Large increase
+                    elif any(word in prompt_l for word in ["decrease", "quieter", "down", "lower", "reduce", "cut"]):
+                        volume_db = -3  # Default decrease
+                        if any(word in prompt_l for word in ["lot", "much", "significantly", "a lot", "way"]):
+                            volume_db = -6  # Large decrease
+                    else:
+                        volume_db = 3  # Default to increase if unclear
+                    
+                    print(f"[Pre-check] ✅ Handling volume request without API: '{user_prompt}' → {volume_db}dB")
+                    return AIProviderResult.success(
+                        action="adjustVolume",
+                        parameters={"volumeDb": volume_db},
+                        message=f"Adjusting volume by {volume_db}dB",
+                        confidence=0.95
+                    ).to_dict()
+                else:
+                    # User specified a number - let API extract it, but we'll still have safeguards
+                    print(f"[Pre-check] Volume request has explicit number, letting API extract: {numbers_found}")
+
             # Get Gemini model (strip "models/" prefix if present, GenerativeModel adds it)
             model_name = self.model_name.replace("models/", "") if self.model_name.startswith("models/") else self.model_name
             model = genai.GenerativeModel(model_name)
@@ -81,9 +119,77 @@ class GeminiProvider(AIProvider):
             # Combine with user request
             full_prompt = f"{system_prompt}\n{context_str}\nUser request: {user_prompt}\n\nResponse (JSON only):"
             
-            # Generate response
-            response = model.generate_content(full_prompt)
-            response_text = response.text.strip()
+            # Generate response with retry logic for rate limits
+            max_retries = 3
+            retry_delay = 1  # Start with 1 second
+            response_text = None
+            last_error = None
+            
+            print(f"[API Call] Making request to Gemini API (model: {model_name})")
+            
+            for attempt in range(max_retries):
+                try:
+                    response = model.generate_content(full_prompt)
+                    response_text = response.text.strip()
+                    print(f"[API Call] ✅ Success on attempt {attempt + 1}")
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    error_full = str(e)
+                    
+                    print(f"[API Call] ❌ Error on attempt {attempt + 1}: {error_full}")
+                    
+                    # Check if it's a rate limit error (429 or quota exceeded)
+                    # Be more specific - don't match generic "exceeded" words
+                    is_rate_limit = (
+                        "429" in error_str or 
+                        ("quota" in error_str and "exceeded" in error_str) or
+                        "rate limit" in error_str or
+                        ("resource exhausted" in error_str) or
+                        ("too many requests" in error_str)
+                    )
+                    
+                    if is_rate_limit:
+                        if attempt < max_retries - 1:
+                            # Exponential backoff: 1s, 2s, 4s
+                            wait_time = retry_delay * (2 ** attempt)
+                            print(f"[Retry] Rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s before retry...")
+                            time.sleep(wait_time)
+                            retry_delay = wait_time
+                        else:
+                            print(f"[Retry] All {max_retries} retry attempts exhausted. Rate limit error persists.")
+                            raise
+                    else:
+                        # Not a rate limit error, don't retry
+                        print(f"[API Call] Non-rate-limit error, not retrying: {error_full}")
+                        raise
+            
+            if response_text is None:
+                # If we still don't have a response after retries, return error
+                error_msg = str(last_error) if last_error else "Unknown error"
+                error_msg_lower = error_msg.lower()
+                # More specific rate limit detection
+                is_rate_limit = (
+                    "429" in error_msg or 
+                    ("quota" in error_msg_lower and "exceeded" in error_msg_lower) or
+                    "rate limit" in error_msg_lower or
+                    "resource exhausted" in error_msg_lower or
+                    "too many requests" in error_msg_lower
+                )
+                
+                if is_rate_limit:
+                    return AIProviderResult.failure(
+                        message=f"⚠️ Rate limit exceeded. Free tier limits: 15 requests/minute, 200 requests/day. Please wait a few minutes or upgrade to Tier 1. Error: {error_msg}",
+                        error="RATE_LIMIT_EXCEEDED"
+                    ).to_dict()
+                else:
+                    # Show full error for debugging
+                    print(f"[Error] Non-rate-limit error: {error_msg}")
+                    return AIProviderResult.failure(
+                        message=f"Gemini API error: {error_msg}",
+                        error="AI_ERROR"
+                    ).to_dict()
             
             # Clean up response (remove markdown code blocks if present)
             if "```json" in response_text:
@@ -92,7 +198,16 @@ class GeminiProvider(AIProvider):
                 response_text = response_text.split("```")[1].split("```")[0].strip()
             
             # Parse JSON response
-            result = json.loads(response_text)
+            try:
+                result = json.loads(response_text)
+            except json.JSONDecodeError as e:
+                # Check if response contains rate limit error message
+                if "429" in response_text or "quota" in response_text.lower() or "rate limit" in response_text.lower():
+                    return AIProviderResult.failure(
+                        message="Rate limit exceeded. Please wait a moment and try again.",
+                        error="RATE_LIMIT_EXCEEDED"
+                    ).to_dict()
+                raise
 
             # Check if multiple actions were returned
             actions_list = result.get("actions")
@@ -108,6 +223,46 @@ class GeminiProvider(AIProvider):
 
             # Handle uncertainty with message-only guidance (no parameters)
             action = result.get("action")
+            message = result.get("message", "")
+            
+            # SAFEGUARD: Check if this is a volume request (even if action is null or message asks for clarification)
+            prompt_l = (user_prompt or "").lower()
+            message_l = (message or "").lower()
+            
+            # Check if this is a volume adjustment request - be very permissive
+            volume_keywords = ["volume", "louder", "quieter", "turn it up", "turn it down", "increase", "decrease", "adjust volume", "change volume"]
+            is_volume_request = any(keyword in prompt_l for keyword in volume_keywords)
+            
+            # Also check if message is asking for clarification on volume (more comprehensive list)
+            asking_for_clarification = any(phrase in message_l for phrase in [
+                "how much", "how many", "specify", "what amount", "which value", "by how much", 
+                "decibels would you", "how many db", "how many decibels", "what value", 
+                "please specify", "need to know", "tell me", "would you like", "do you want"
+            ])
+            
+            # Trigger safeguard if: it's a volume request AND (action is null OR message asks for clarification OR error is NEEDS_SPECIFICATION)
+            error = result.get("error", "")
+            if is_volume_request and (not action or asking_for_clarification or error == "NEEDS_SPECIFICATION"):
+                # Automatically provide default volume adjustment
+                if any(word in prompt_l for word in ["increase", "louder", "up", "raise", "boost"]):
+                    volume_db = 3  # Default increase
+                    if any(word in prompt_l for word in ["lot", "much", "significantly", "a lot", "way"]):
+                        volume_db = 6  # Large increase
+                elif any(word in prompt_l for word in ["decrease", "quieter", "down", "lower", "reduce", "cut"]):
+                    volume_db = -3  # Default decrease
+                    if any(word in prompt_l for word in ["lot", "much", "significantly", "a lot", "way"]):
+                        volume_db = -6  # Large decrease
+                else:
+                    volume_db = 3  # Default to increase if unclear
+                
+                print(f"[Safeguard] ✅ Auto-provided volumeDb={volume_db} for request: '{user_prompt}' (action was: {action}, message was: '{message}', error was: {error})")
+                return AIProviderResult.success(
+                    action="adjustVolume",
+                    parameters={"volumeDb": volume_db},
+                    message=f"Adjusting volume by {volume_db}dB",
+                    confidence=0.9
+                ).to_dict()
+            
             if not action:
 
                 prompt_l = (user_prompt or "").lower()
@@ -123,6 +278,78 @@ class GeminiProvider(AIProvider):
             # Confident case (single action)
             parameters = result.get("parameters", {})
             message = result.get("message", "Action extracted successfully")
+            
+            # SAFEGUARD: If action is adjustVolume, validate and ensure volumeDb exists
+            if action == "adjustVolume":
+                prompt_l = (user_prompt or "").lower()
+                volume_db = parameters.get("volumeDb")
+                message_l = (message or "").lower()
+                
+                # FIRST: Try to extract dB value directly from user prompt if AI didn't extract it
+                # This is a fallback to ensure we get the user's specified value
+                import re
+                if volume_db is None:
+                    # Look for patterns like "by 10 db", "by 10", "10db", "10 decibels", etc.
+                    # Match numbers with optional "db"/"decibel" after, or numbers after "by"
+                    number_patterns = [
+                        r'by\s+(-?\d+(?:\.\d+)?)\s*(?:db|decibel|decibels|dbs|dB)?',  # "by 10 db" or "by -4"
+                        r'(-?\d+(?:\.\d+)?)\s*(?:db|decibel|decibels|dbs|dB)',  # "10db" or "-4 dB"
+                        r'(-?\d+(?:\.\d+)?)\s+decibels?',  # "10 decibels"
+                    ]
+                    for pattern in number_patterns:
+                        matches = re.findall(pattern, prompt_l)
+                        if matches:
+                            try:
+                                extracted_db = float(matches[0])
+                                print(f"[Safeguard] ✅ Extracted volumeDb={extracted_db}dB directly from prompt: '{user_prompt}'")
+                                volume_db = extracted_db
+                                break
+                            except (ValueError, TypeError):
+                                continue
+                
+                # Check if message asks for clarification
+                asking_for_clarification = any(phrase in message_l for phrase in [
+                    "how much", "how many", "specify", "what amount", "which value", 
+                    "by how much", "decibels would you", "how many db", "how many decibels",
+                    "what value", "please specify", "need to know", "tell me", "would you like"
+                ])
+                
+                # Validate and fix volume_db if needed
+                if volume_db is not None:
+                    try:
+                        volume_db = float(volume_db)
+                        # NO CLAMPING - user specified a value, use it exactly as they said
+                        # Only validate it's a number, don't limit it
+                        print(f"[Safeguard] ✅ Using user-specified volumeDb={volume_db}dB (no clamping)")
+                    except (ValueError, TypeError):
+                        print(f"[Safeguard] ⚠️ Invalid volumeDb value: {volume_db}, will use default")
+                        volume_db = None
+                
+                # Only provide defaults if volume_db is still None AND not asking for clarification
+                if volume_db is None and not asking_for_clarification:
+                    # Automatically provide default volume adjustment
+                    if any(word in prompt_l for word in ["increase", "louder", "up", "raise", "boost"]):
+                        volume_db = 3  # Default increase
+                        if any(word in prompt_l for word in ["lot", "much", "significantly", "a lot", "way"]):
+                            volume_db = 6  # Large increase
+                    elif any(word in prompt_l for word in ["decrease", "quieter", "down", "lower", "reduce", "cut"]):
+                        volume_db = -3  # Default decrease
+                        if any(word in prompt_l for word in ["lot", "much", "significantly", "a lot", "way"]):
+                            volume_db = -6  # Large decrease
+                    else:
+                        volume_db = 3  # Default to increase if unclear
+                    
+                    parameters["volumeDb"] = volume_db
+                    message = f"Adjusting volume by {volume_db}dB"
+                    print(f"[Safeguard] ✅ Auto-provided volumeDb={volume_db}dB for request: '{user_prompt}' (no explicit value found)")
+                else:
+                    # Store the validated value (user-specified or extracted)
+                    parameters["volumeDb"] = volume_db
+                    if volume_db is not None:
+                        print(f"[Safeguard] ✅ Final volumeDb={volume_db}dB for request: '{user_prompt}'")
+                    else:
+                        print(f"[Safeguard] ⚠️ volumeDb is None after all checks for: '{user_prompt}'")
+            
             confidence = 1.0
             return AIProviderResult.success(
                 action=action,
@@ -137,10 +364,31 @@ class GeminiProvider(AIProvider):
                 error="PARSE_ERROR"
             ).to_dict()
         except Exception as e:
-            return AIProviderResult.failure(
-                message=f"Gemini API error: {str(e)}",
-                error="AI_ERROR"
-            ).to_dict()
+            error_str = str(e).lower()
+            error_full = str(e)
+            print(f"[Exception Handler] Caught exception: {error_full}")
+            
+            # More specific rate limit detection
+            is_rate_limit = (
+                "429" in error_str or 
+                ("quota" in error_str and "exceeded" in error_str) or
+                "rate limit" in error_str or
+                "resource exhausted" in error_str or
+                "too many requests" in error_str
+            )
+            
+            if is_rate_limit:
+                print(f"[Exception Handler] Detected rate limit error")
+                return AIProviderResult.failure(
+                    message=f"Rate limit exceeded. Please wait a moment and try again. Error: {error_full}",
+                    error="RATE_LIMIT_EXCEEDED"
+                ).to_dict()
+            else:
+                print(f"[Exception Handler] Non-rate-limit error: {error_full}")
+                return AIProviderResult.failure(
+                    message=f"Gemini API error: {error_full}",
+                    error="AI_ERROR"
+                ).to_dict()
     
     def _get_system_prompt(self) -> str:
         """Get the system prompt for Gemini"""
@@ -658,6 +906,14 @@ SMALL TALK (greetings/chit-chat):
         """Get the system prompt specifically for audio editing"""
         return """You are an audio editing assistant. Extract the action and parameters from user requests for audio clips.
 
+CRITICAL VOLUME ADJUSTMENT RULES (READ FIRST):
+- When user says "increase volume", "decrease volume", "make it louder", "make it quieter", "turn it up", or "turn it down" WITHOUT specifying an amount:
+  - ALWAYS return {"action": "adjustVolume", "parameters": {"volumeDb": 3}} for increase/louder/up
+  - ALWAYS return {"action": "adjustVolume", "parameters": {"volumeDb": -3}} for decrease/quieter/down
+  - NEVER return action: null or ask "how much"
+  - NEVER ask for clarification - always use default values
+- Default values: +3dB for increase, -3dB for decrease, +6dB for "a lot", -6dB for "a lot" decrease
+
 Available actions:
 - applyAudioFilter: Apply an audio effect/filter to an audio clip (parameters: filterDisplayName)
 - adjustVolume: Adjust volume of an audio clip (parameters: volumeDb)
@@ -690,23 +946,42 @@ When a user requests an audio filter:
     {"action": null, "message": "Natural language response of best-matching audio filters based on user description."}
 - Use common, user-friendly names. The system will match them to exact filter names.
 
-VOLUME ADJUSTMENT:
-- Extract decibel values from user requests
+VOLUME ADJUSTMENT (CRITICAL):
+- ALWAYS extract a decibel value - NEVER ask the user for clarification
 - Positive values = louder, negative values = quieter
-- Examples:
-  - "make it louder by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
-  - "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
-  - "increase volume by 3" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
-  - "reduce volume by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+- If no specific value is given, ALWAYS use these defaults (DO NOT ask the user):
+  - "increase volume" or "make it louder" or "turn it up" → +3dB (moderate increase)
+  - "decrease volume" or "make it quieter" or "turn it down" → -3dB (moderate decrease)
+  - "increase volume a lot" or "make it much louder" → +6dB (large increase)
+  - "decrease volume a lot" or "make it much quieter" → -6dB (large decrease)
+- IMPORTANT: When user says "increase volume" without a number, return {"action": "adjustVolume", "parameters": {"volumeDb": 3}} immediately
+- DO NOT return action: null or ask "how much" - always provide a default value
+- Examples (ALWAYS follow these patterns):
+  - "increase volume" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+  - "decrease volume" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+  - "make it louder" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+  - "make it quieter" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+  - "turn it up" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+  - "turn it down" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+  - "make it louder by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+  - "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}, "message": "Decreasing volume by 6dB"}
+  - "increase volume by 3" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+  - "reduce volume by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}, "message": "Decreasing volume by 6dB"}
 
 Examples:
 - "add reverb" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Reverb"}, "message": "Applying Reverb"}
 - "apply parametric eq" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "Parametric EQ"}, "message": "Applying Parametric EQ"}
 - "add noise reduction" → {"action": "applyAudioFilter", "parameters": {"filterDisplayName": "DeNoise"}, "message": "Applying DeNoise"}
-- "adjust volume by 3 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}}
-- "make it louder by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 6}}
-- "reduce volume by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}}
-- "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}}
+- "increase volume" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+- "decrease volume" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+- "make it louder" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+- "make it quieter" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+- "turn it up" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+- "turn it down" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+- "adjust volume by 3 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": 3}, "message": "Increasing volume by 3dB"}
+- "make it louder by 6dB" → {"action": "adjustVolume", "parameters": {"volumeDb": 6}, "message": "Increasing volume by 6dB"}
+- "reduce volume by 3dB" → {"action": "adjustVolume", "parameters": {"volumeDb": -3}, "message": "Decreasing volume by 3dB"}
+- "turn it down 6 decibels" → {"action": "adjustVolume", "parameters": {"volumeDb": -6}, "message": "Decreasing volume by 6dB"}
 
 Return ONLY valid JSON in this format:
 {
@@ -721,6 +996,8 @@ If the request is unclear or not an audio editing action, return:
     "parameters": {},
     "message": "I don't understand this audio editing request."
 }
+
+IMPORTANT: For volume adjustments, NEVER return action: null. Always provide a default value (3dB for increase, -3dB for decrease) when no specific amount is mentioned.
 
 SMALL TALK (greetings/chit-chat):
 - If the user greets or engages in small talk (e.g., "hello", "hi", "hey", "good morning", "good evening", "thank you", "thanks"), do NOT invent an edit action.

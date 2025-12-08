@@ -290,6 +290,10 @@ const actionRegistry = {
     const items = Array.isArray(trackItems) ? trackItems : [trackItems];
     const volumeDb = parameters.volumeDb || parameters.volume || 0;
     
+    console.log(`[Dispatcher] adjustVolume called with parameters:`, parameters);
+    console.log(`[Dispatcher] Extracted volumeDb: ${volumeDb} (type: ${typeof volumeDb})`);
+    console.log(`[Dispatcher] Parsed volumeDb: ${Number(volumeDb)}dB`);
+    
     let successful = 0;
     let failed = 0;
     
