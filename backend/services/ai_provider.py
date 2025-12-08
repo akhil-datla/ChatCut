@@ -6,7 +6,7 @@ between different AI services (Gemini, OpenAI, Anthropic, etc.) without
 changing the rest of the codebase.
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 
 class AIProvider(ABC):
@@ -40,6 +40,23 @@ class AIProvider(ABC):
     @abstractmethod
     def get_provider_name(self) -> str:
         """Get the name of the provider"""
+        pass
+    
+    @abstractmethod
+    def process_question(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        Process a question/chat request with conversation history.
+        This is separate from action extraction - used for question answering.
+        
+        Args:
+            messages: List of message dicts with 'role' ('user'|'assistant') and 'content'
+        
+        Returns:
+            {
+                "message": str,              # Answer text
+                "error": str | None          # Error code if failed
+            }
+        """
         pass
 
 
