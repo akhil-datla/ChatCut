@@ -123,6 +123,22 @@ const MagicWandIcon = () => (
   </svg>
 );
 
+const QuestionIcon = () => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg"
+    className="mode-icon-svg" 
+    viewBox="0 0 24 24" 
+    width="20" 
+    height="20" 
+    fill="white"
+    role="img"
+    aria-hidden="true"
+  >
+    {/* Simple question mark - no circle */}
+    <path d="M11.07 12.85c.77-1.39 2.25-2.21 3.11-3.44.91-1.29.4-3.7-2.18-3.7-1.69 0-2.52 1.28-2.87 2.34L6.54 6.96C7.25 4.83 9.18 3 11.99 3c2.35 0 3.96 1.07 4.78 2.41.7 1.15 1.11 3.3.03 4.9-1.2 1.77-2.35 2.31-2.97 3.45-.25.46-.35.76-.35 2.24h-2.89c-.01-.78-.13-2.05.48-3.15zM14 20c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/>
+  </svg>
+);
+
 
 
 /**
@@ -131,7 +147,8 @@ const MagicWandIcon = () => (
 const MODE_ICON_COMPONENT = {
   'none': EditIcon,
   'object_tracking': BullseyeIcon,
-  'ai_video': MagicWandIcon
+  'ai_video': MagicWandIcon,
+  'questions': QuestionIcon
 };
 
 /**
@@ -141,7 +158,8 @@ const MODE_ICON_COMPONENT = {
 const MODE_LABEL = {
   'none': 'Native Edits',
   'object_tracking': 'Object Tracking',
-  'ai_video': 'AI Generation'
+  'ai_video': 'AI Generation',
+  'questions': 'Questions'
 };
 
 export const Footer = (props) => {
@@ -462,6 +480,7 @@ export const Footer = (props) => {
               const NoneIcon = MODE_ICON_COMPONENT['none'];
               const TrackingIcon = MODE_ICON_COMPONENT['object_tracking'];
               const AIIcon = MODE_ICON_COMPONENT['ai_video'];
+              const QuestionsIcon = MODE_ICON_COMPONENT['questions'];
               
               return (
               <div className="mode-selector-dropdown">
@@ -492,6 +511,15 @@ export const Footer = (props) => {
                     <AIIcon />
                     <span className="mode-option-text">{MODE_LABEL['ai_video']}</span>
                   </div>
+                <div 
+                  className={`mode-dropdown-option ${currentMode === 'questions' ? 'active' : ''}`}
+                  onClick={() => handleModeChange('questions')}
+                    onMouseDown={handleDropdownItemMouseDown}
+                  title="Ask questions about Premiere Pro workflows and features"
+                >
+                    <QuestionsIcon />
+                    <span className="mode-option-text">{MODE_LABEL['questions']}</span>
+                </div>
                 </div>
               );
             })()}
