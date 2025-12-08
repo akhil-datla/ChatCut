@@ -148,6 +148,211 @@ class TestAPIEndpoints:
         assert data["error"] == "FILE_NOT_FOUND"
         assert data["action"] is None
 
+    def test_colab_start_missing_file(self, client):
+        """Colab start endpoint should flag missing files."""
+        response = client.post(
+            "/api/colab-start",
+            json={
+                "file_path": "/tmp/nonexistent.mp4",
+                "prompt": "zoom on person",
+                "colab_url": "https://test.ngrok.io"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["error"] == "FILE_NOT_FOUND"
+        assert data["job_id"] is None
+
+    def test_colab_start_missing_fields(self, client):
+        """Colab start endpoint should validate required fields."""
+        # Missing colab_url
+        response = client.post(
+            "/api/colab-start",
+            json={
+                "file_path": "/tmp/test.mp4",
+                "prompt": "test"
+            }
+        )
+        assert response.status_code == 422  # Validation error
+
+    def test_colab_start_success(self, client, tmp_path, monkeypatch):
+        """Colab start endpoint should start job successfully."""
+        test_file = tmp_path / "test.mp4"
+        test_file.write_bytes(b"fake video")
+
+        def _mock_start_job(file_path, prompt, colab_url, trim_info=None):
+            return {
+                "job_id": "test123",
+                "status": "started",
+                "message": "Processing started",
+                "error": None
+            }
+
+        monkeypatch.setattr("services.colab_proxy.start_colab_job", _mock_start_job)
+
+        response = client.post(
+            "/api/colab-start",
+            json={
+                "file_path": str(test_file),
+                "prompt": "zoom on person",
+                "colab_url": "https://test.ngrok.io"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "test123"
+        assert data["status"] == "started"
+        assert data["error"] is None
+
+    def test_colab_start_with_trim_info(self, client, tmp_path, monkeypatch):
+        """Colab start endpoint should accept trim info."""
+        test_file = tmp_path / "test.mp4"
+        test_file.write_bytes(b"fake video")
+
+        def _mock_start_job(file_path, prompt, colab_url, trim_info=None):
+            return {
+                "job_id": "test123",
+                "status": "started",
+                "message": "Processing started",
+                "error": None
+            }
+
+        monkeypatch.setattr("services.colab_proxy.start_colab_job", _mock_start_job)
+
+        response = client.post(
+            "/api/colab-start",
+            json={
+                "file_path": str(test_file),
+                "prompt": "zoom on person",
+                "colab_url": "https://test.ngrok.io",
+                "trim_start": 1.0,
+                "trim_end": 5.0
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_id"] == "test123"
+
+    def test_colab_progress_missing_fields(self, client):
+        """Colab progress endpoint should validate required fields."""
+        response = client.post(
+            "/api/colab-progress",
+            json={
+                "job_id": "test123"
+                # Missing colab_url
+            }
+        )
+        assert response.status_code == 422  # Validation error
+
+    def test_colab_progress_processing(self, client, monkeypatch):
+        """Colab progress endpoint should return processing status."""
+        def _mock_get_progress(job_id, colab_url, original_filename="video"):
+            return {
+                "status": "processing",
+                "stage": "tracking",
+                "progress": 45,
+                "message": "Tracking frames...",
+                "output_path": None,
+                "error": None
+            }
+
+        monkeypatch.setattr("services.colab_proxy.get_colab_progress", _mock_get_progress)
+
+        response = client.post(
+            "/api/colab-progress",
+            json={
+                "job_id": "test123",
+                "colab_url": "https://test.ngrok.io",
+                "original_filename": "test.mp4"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "processing"
+        assert data["progress"] == 45
+        assert data["output_path"] is None
+
+    def test_colab_progress_complete(self, client, monkeypatch):
+        """Colab progress endpoint should return complete status with output path."""
+        def _mock_get_progress(job_id, colab_url, original_filename="video"):
+            return {
+                "status": "complete",
+                "stage": "complete",
+                "progress": 100,
+                "message": "Processing complete!",
+                "output_path": "/path/to/output/processed_video.mp4",
+                "error": None
+            }
+
+        monkeypatch.setattr("services.colab_proxy.get_colab_progress", _mock_get_progress)
+
+        response = client.post(
+            "/api/colab-progress",
+            json={
+                "job_id": "test123",
+                "colab_url": "https://test.ngrok.io"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "complete"
+        assert data["progress"] == 100
+        assert data["output_path"] == "/path/to/output/processed_video.mp4"
+
+    def test_colab_health_missing_fields(self, client):
+        """Colab health endpoint should validate required fields."""
+        response = client.post(
+            "/api/colab-health",
+            json={}
+        )
+        assert response.status_code == 422  # Validation error
+
+    def test_colab_health_success(self, client, monkeypatch):
+        """Colab health endpoint should return healthy status."""
+        def _mock_check_health(colab_url):
+            return {
+                "healthy": True,
+                "status": "ok",
+                "gpu": "T4",
+                "error": None
+            }
+
+        monkeypatch.setattr("services.colab_proxy.check_colab_health", _mock_check_health)
+
+        response = client.post(
+            "/api/colab-health",
+            json={
+                "colab_url": "https://test.ngrok.io"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["healthy"] is True
+        assert data["status"] == "ok"
+        assert data["gpu"] == "T4"
+
+    def test_colab_health_unhealthy(self, client, monkeypatch):
+        """Colab health endpoint should return unhealthy status."""
+        def _mock_check_health(colab_url):
+            return {
+                "healthy": False,
+                "status": "error",
+                "error": "Connection failed"
+            }
+
+        monkeypatch.setattr("services.colab_proxy.check_colab_health", _mock_check_health)
+
+        response = client.post(
+            "/api/colab-health",
+            json={
+                "colab_url": "https://test.ngrok.io"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["healthy"] is False
+        assert data["status"] == "error"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
