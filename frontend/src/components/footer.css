@@ -4,7 +4,7 @@
   width: 100%;
   background: rgba(30, 30, 30, 0.95);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 16px 20px;
+  padding: 8px 16px 2px 20px; 
   box-sizing: border-box;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
 }
@@ -12,7 +12,7 @@
 .plugin-footer-row-1 {
   color: var(--color-text-offwhite);
   width: 100%;
-  padding: 8px 0;
+  padding: 0; 
   display: flex;
   align-items: center;
   gap: 8px;
@@ -191,11 +191,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 0 8px 0;
+  padding: 0; /* Removed padding completely */
   max-height: 120px; /* Increased to allow more chips before scrolling */
   overflow-y: auto;
   overflow-x: hidden; /* Prevent horizontal scroll */
-  margin-bottom: 12px;
+  margin-bottom: 0; /* Removed margin */
   align-content: flex-start; /* Align wrapped items to top */
 }
 
@@ -211,12 +211,12 @@
   align-items: center;
   background-color: rgba(0, 120, 212, 0.2);
   border: 1px solid rgba(0, 120, 212, 0.4);
-  border-radius: 6px;
-  padding: 4px 6px 4px 10px;
-  font-size: 12px;
+  border-radius: 4px;
+  padding: 2px 6px; 
+  font-size: 10px; 
   color: #e0e0e0;
   transition: all 0.2s ease;
-  line-height: 1.4;
+  line-height: 1.2;
 }
 
 .context-chip:hover {
@@ -260,22 +260,22 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background-color: var(--color-border-light);
-  color: var(--color-text-offwhite);
+  background-color: #333333; /* Darker grey than #444444 to match Send/Undo */
+  color: #0078d4;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid #555;
+  border: none; /* Removed border */
   flex-shrink: 0;
   margin-right: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .plus-btn:hover {
-  background-color: var(--color-text-offwhite);
-  color: var(--color-bg-dark);
+  background-color: #0078d4; /* Blue on hover */
+  color: white;
   transform: scale(1.1);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
@@ -301,8 +301,8 @@
 }
 
 .plus-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   fill: currentColor;
 }
 
@@ -342,12 +342,12 @@
 }
 
 .dropdown-item {
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 6px 10px; 
+  font-size: 10px; 
   color: var(--color-text-offwhite);
   cursor: pointer;
-  border-radius: 6px;
-  position: relative; /* For tooltip positioning */
+  border-radius: 4px; 
+  position: relative;
   white-space: nowrap;
   transition: all 0.2s ease;
 }
@@ -458,7 +458,7 @@
 .send-icon {
   width: 22px;
   height: 22px;
-  fill: currentColor;
+  fill:  #0078d4;
   vertical-align: middle;
 }
 
@@ -502,7 +502,7 @@
 .undo-icon {
   width: 22px;
   height: 22px;
-  fill: currentColor;
+  fill: #0078d4;
   vertical-align: middle;
 }
 
